@@ -1,0 +1,15 @@
+{
+  "categories": ["top", "bottom", "coat", "shoes", "accessory"],
+  "sub_categories": {
+    "top": ["t-shirt", "shirt", "polo", "sweater", "hoodie", "blouse", "tank-top"],
+    "bottom": ["jeans", "trousers", "shorts", "skirt", "sweatpants"],
+    "coat": ["jacket", "blazer", "windbreaker", "down-jacket", "cardigan", "trench-coat"],
+    "shoes": ["sneakers", "boots", "sandals", "loafers", "heels", "flats"],
+    "accessory": ["hat", "scarf", "bag", "belt", "watch", "glasses"]
+  },
+  "styles": ["casual", "formal", "sporty", "minimal", "vintage", "street", "elegant"],
+  "scenes": ["class", "date", "sports", "interview", "party", "travel", "work", "daily"],
+  "colors": ["black", "white", "gray", "red", "blue", "green", "yellow", "orange", "purple", "pink", "brown", "beige", "navy", "khaki"],
+  "seasons": ["spring", "summer", "autumn", "winter"],
+  "thickness": ["thin", "medium", "thick"]
+}

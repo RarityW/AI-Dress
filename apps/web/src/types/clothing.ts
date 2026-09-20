@@ -172,5 +172,6 @@ export interface TryOnResponse {
   image_url: string;
   prompt: string;
   source: string;
+  error?: string;
 }
 

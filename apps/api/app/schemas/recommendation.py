@@ -77,4 +77,6 @@ class TryOnResponse(BaseModel):
     image_url: str
     prompt: str
     source: str
+    error: Optional[str] = None
+
 

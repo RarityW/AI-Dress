@@ -178,10 +178,10 @@ export default function RecommendPage() {
         target_style: targetStyle,
       });
 
-      if ((resp.success || (resp as any).code === 200) && resp.data?.image_url) {
+      if ((resp.success || (resp as any).code === 200) && resp.data?.image_url && resp.data.source !== 'error') {
         setTryOnImages((prev) => ({ ...prev, [outfitId]: resp.data.image_url }));
       } else {
-        setTryOnError((prev) => ({ ...prev, [outfitId]: resp.message || '生成试穿大片失败，请重试' }));
+        setTryOnError((prev) => ({ ...prev, [outfitId]: resp.data?.error || resp.message || '生成试穿大片失败，请重试' }));
       }
     } catch (err: any) {
       console.error('生图异常:', err);

@@ -15,11 +15,6 @@ export default function HomePage() {
     <div className="space-y-20 pb-16">
       {/* 1. 主视觉区 (Hero Section) */}
       <section className="relative pt-6 sm:pt-12 text-center max-w-4xl mx-auto space-y-6">
-        {/* 顶部微徽标 */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/5 border border-slate-900/10 text-xs font-semibold text-slate-800 shadow-sm">
-          <span className="flex h-2 w-2 rounded-full bg-brand-600 animate-pulse" />
-          <span>《人工智能原理》课程项目 · 自主决策与感知解耦架构</span>
-        </div>
 
         {/* 主标与副标 */}
         <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-[1.15]">

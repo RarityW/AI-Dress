@@ -185,7 +185,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <span className="font-bold text-slate-900 tracking-tight">衣见 AI · YIJIAN AI</span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-md">
-                《人工智能原理》课程项目——基于多模态视觉感知与自主运筹优化算法的智能穿搭决策系统。
+                基于多模态视觉感知与自主运筹优化算法的新一代智能穿搭决策系统。
                 感知层理解服装多模态特征，决策层自主求解穿搭全局最优。
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
@@ -226,7 +226,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <div className="border-t border-slate-100 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-3">
             <div>
-              5 人大学团队精研合作 · 项目负责人：Zhenqi Wang
+              团队精研合作 · 项目主理人：Zhenqi Wang
             </div>
             <div className="flex items-center gap-4">
               <a href="https://github.com/RarityW/AI-Dress" target="_blank" rel="noreferrer" className="hover:text-slate-600">GitHub 源码</a>

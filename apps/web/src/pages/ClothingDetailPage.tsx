@@ -1,20 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Trash2,
+  Thermometer,
+  Sparkles,
+  Calendar,
+  Palette,
+  Compass,
+  AlertCircle
+} from 'lucide-react';
 import { getClothingDetail, deleteClothing } from '../services/api';
 import { ClothingItem } from '../types/clothing';
+import LoadingSpinner from '../components/LoadingSpinner';
 
-const CATEGORY_MAP: Record<string, string> = {
-  top: '上装',
-  bottom: '下装',
-  coat: '外套',
-  shoes: '鞋履',
-  accessory: '配饰',
+const CATEGORY_NAMES: Record<string, string> = {
+  top: '上装 (Top)',
+  bottom: '下装 (Bottom)',
+  coat: '外套 (Coat)',
+  shoes: '鞋履 (Shoes)',
+  accessory: '配饰 (Accessory)',
 };
 
-const ClothingDetailPage: React.FC = () => {
+const CATEGORY_ICONS: Record<string, string> = {
+  top: '👕',
+  bottom: '👖',
+  coat: '🧥',
+  shoes: '👟',
+  accessory: '🧢',
+};
+
+export default function ClothingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  
+
   const [item, setItem] = useState<ClothingItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,166 +46,208 @@ const ClothingDetailPage: React.FC = () => {
       setError(null);
       try {
         const response = await getClothingDetail(id);
-        if (response.code === 0 && response.data) {
+        if ((response.success || response.code === 200) && response.data) {
           setItem(response.data);
         } else {
           setError(response.message || '获取衣物详情失败');
         }
-      } catch (err) {
-        setError('网络请求失败');
+      } catch (err: any) {
+        console.error(err);
+        setError('无法连接服务器获取单品信息');
       } finally {
         setLoading(false);
       }
     };
-    
+
     fetchDetail();
   }, [id]);
 
   const handleDelete = async () => {
-    if (!id || !window.confirm('确定要删除这件衣物吗？此操作不可恢复。')) {
+    if (!id) return;
+    if (!window.confirm(`确定要从衣橱中删除这件【${item?.sub_category || '衣物'}】吗？该操作不可撤回。`)) {
       return;
     }
-    
+
     setDeleting(true);
     try {
       const response = await deleteClothing(id);
-      if (response.code === 0) {
+      if (response.success || response.code === 200) {
         navigate('/wardrobe');
       } else {
         alert(response.message || '删除失败');
         setDeleting(false);
       }
     } catch (err) {
-      alert('网络请求失败');
+      alert('网络请求异常，删除未完成');
       setDeleting(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-32">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div className="py-32 text-center space-y-3">
+        <LoadingSpinner />
+        <p className="text-sm text-slate-500 font-medium animate-pulse">正在加载单品档案...</p>
       </div>
     );
   }
 
   if (error || !item) {
     return (
-      <div className="container mx-auto px-4 py-16 text-center">
-        <p className="text-red-500 mb-6 text-lg">{error || '衣物不存在'}</p>
-        <button
-          onClick={() => navigate('/wardrobe')}
-          className="text-indigo-600 hover:text-indigo-800 font-medium"
+      <div className="max-w-md mx-auto py-24 text-center space-y-4">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
+        <h3 className="text-lg font-bold text-slate-900">未找到该单品档案</h3>
+        <p className="text-xs text-slate-500">{error || '该衣物可能已被删除或不存在。'}</p>
+        <Link
+          to="/wardrobe"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-slate-900 hover:bg-brand-600 transition-colors"
         >
-          返回衣橱
-        </button>
+          返回我的衣橱
+        </Link>
       </div>
     );
   }
 
+  const categoryLabel = CATEGORY_NAMES[item.category] || item.category;
+  const icon = CATEGORY_ICONS[item.category] || '👗';
+
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <div className="mb-6 flex justify-between items-center">
+    <div className="max-w-4xl mx-auto space-y-8 pb-16">
+      {/* 顶部面包屑与操作栏 */}
+      <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
         <button
           onClick={() => navigate('/wardrobe')}
-          className="flex items-center text-gray-600 hover:text-indigo-600 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          返回衣橱
+          <ArrowLeft className="w-4 h-4" />
+          <span>返回衣橱列表</span>
         </button>
+
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="text-red-500 hover:text-red-700 disabled:text-red-300 font-medium"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors disabled:opacity-40 cursor-pointer"
         >
-          {deleting ? '删除中...' : '删除衣物'}
+          <Trash2 className="w-3.5 h-3.5" />
+          <span>{deleting ? '正在删除...' : '删除单品'}</span>
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden flex flex-col md:flex-row">
-        <div className="md:w-1/2 h-96 md:h-auto bg-gray-100 relative">
-          <img
-            src={import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}${item.image_url}` : item.image_url}
-            alt={item.sub_category}
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-sm font-semibold text-gray-800 shadow-sm">
-            {CATEGORY_MAP[item.category] || item.category}
+      {/* 主商品档案卡片 (Luxury Editorial Showcase) */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-soft overflow-hidden grid grid-cols-1 md:grid-cols-12">
+        {/* 左侧大图展示区 (5列) */}
+        <div className="md:col-span-5 bg-slate-100/70 p-6 flex items-center justify-center relative min-h-[340px]">
+          {item.image_url ? (
+            <img
+              src={item.image_url}
+              alt={item.sub_category}
+              className="max-h-96 w-auto object-contain rounded-2xl shadow-md"
+            />
+          ) : (
+            <div className="text-8xl opacity-30">{icon}</div>
+          )}
+
+          <div className="absolute top-4 left-4 glass-card px-3 py-1 rounded-full text-xs font-bold text-slate-800 shadow-sm">
+            {categoryLabel}
           </div>
         </div>
-        
-        <div className="md:w-1/2 p-8 flex flex-col justify-center">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">{item.sub_category}</h1>
-          <p className="text-gray-500 mb-8 text-sm">添加于 {new Date(item.created_at).toLocaleDateString()}</p>
-          
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-              <div>
-                <h3 className="text-sm text-gray-500 mb-1">主色调</h3>
-                <div className="flex items-center">
-                  <div
-                    className="w-6 h-6 rounded-full border border-gray-200 shadow-sm mr-2"
+
+        {/* 右侧属性详细档案 (7列) */}
+        <div className="md:col-span-7 p-6 sm:p-8 flex flex-col justify-between space-y-6">
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <span className="text-xs uppercase tracking-wider font-bold text-brand-600">
+                GARMENT SPECIFICATION
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                {item.sub_category}
+              </h1>
+              <div className="flex items-center gap-1 text-xs text-slate-400">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>收纳时间：{new Date(item.created_at).toLocaleDateString('zh-CN')}</span>
+              </div>
+            </div>
+
+            {/* 核心特征网格 */}
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              {/* 颜色属性 */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Palette className="w-3.5 h-3.5" />
+                  主色调
+                </span>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span
+                    className="w-4 h-4 rounded-full border border-slate-300 shadow-xs"
                     style={{ backgroundColor: item.primary_color }}
-                  ></div>
-                  <span className="text-gray-700">{item.primary_color}</span>
-                </div>
-              </div>
-              
-              {item.secondary_color && (
-                <div>
-                  <h3 className="text-sm text-gray-500 mb-1">辅助色调</h3>
-                  <div className="flex items-center">
-                    <div
-                      className="w-6 h-6 rounded-full border border-gray-200 shadow-sm mr-2"
-                      style={{ backgroundColor: item.secondary_color }}
-                    ></div>
-                    <span className="text-gray-700">{item.secondary_color}</span>
-                  </div>
-                </div>
-              )}
-              
-              <div>
-                <h3 className="text-sm text-gray-500 mb-1">风格</h3>
-                <span className="inline-block bg-gray-100 text-gray-700 px-3 py-1 rounded-md">
-                  {item.style}
-                </span>
-              </div>
-              
-              <div>
-                <h3 className="text-sm text-gray-500 mb-1">厚度</h3>
-                <span className="inline-block bg-gray-100 text-gray-700 px-3 py-1 rounded-md">
-                  {item.thickness}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm text-gray-500 mb-2">适宜季节</h3>
-              <div className="flex flex-wrap gap-2">
-                {item.season.map(s => (
-                  <span key={s} className="bg-indigo-50 text-indigo-600 border border-indigo-100 px-3 py-1 rounded-md">
-                    {s}
+                  />
+                  <span className="text-sm font-bold text-slate-800 capitalize">
+                    {item.primary_color}
                   </span>
-                ))}
+                </div>
+              </div>
+
+              {/* 风格偏向 */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  风格基调
+                </span>
+                <div className="text-sm font-bold text-slate-800 capitalize pt-0.5">
+                  {item.style}
+                </div>
+              </div>
+
+              {/* 面料厚度 */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-xs text-slate-400">厚薄程度</span>
+                <div className="text-sm font-bold text-slate-800 capitalize">
+                  {item.thickness}
+                </div>
+              </div>
+
+              {/* 适温温区 */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Thermometer className="w-3.5 h-3.5 text-amber-500" />
+                  适宜温区
+                </span>
+                <div className="text-sm font-bold text-slate-800">
+                  {item.temp_min}℃ ~ {item.temp_max}℃
+                </div>
               </div>
             </div>
 
-            <div>
-              <h3 className="text-sm text-gray-500 mb-1">适宜温度</h3>
-              <div className="flex items-center text-gray-700 font-medium">
-                <svg className="w-5 h-5 mr-1 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                {item.temp_min}°C ~ {item.temp_max}°C
+            {/* 适宜季节标签 */}
+            <div className="space-y-1.5 pt-1">
+              <span className="text-xs text-slate-400 font-medium">推荐穿着季节</span>
+              <div className="flex flex-wrap gap-2">
+                {Array.isArray(item.season) &&
+                  item.season.map((s) => (
+                    <span
+                      key={s}
+                      className="px-3 py-1 rounded-xl text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200/60"
+                    >
+                      {s === 'spring' ? '春季' : s === 'summer' ? '夏季' : s === 'autumn' ? '秋季' : s === 'winter' ? '冬季' : s}
+                    </span>
+                  ))}
               </div>
             </div>
+          </div>
+
+          {/* 底部行动引导 */}
+          <div className="pt-6 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-400">单品 ID: {item.id.slice(0, 8)}...</span>
+            <Link
+              to="/recommend"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-slate-900 hover:bg-brand-600 transition-colors shadow-sm"
+            >
+              <Compass className="w-4 h-4" />
+              <span>使用此单品进行推荐搭配</span>
+            </Link>
           </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default ClothingDetailPage;
+}

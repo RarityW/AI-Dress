@@ -23,6 +23,8 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(scope="session", autouse=True)
 def create_test_tables():
     """在测试会话开始时创建所有表，结束时销毁。"""
+    # 必须导入所有模型，让 Base.metadata 注册全部表定义
+    import app.models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)

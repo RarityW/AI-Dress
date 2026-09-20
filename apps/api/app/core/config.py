@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # --- File Upload ---
     MAX_UPLOAD_SIZE_MB: int = 10
     ALLOWED_IMAGE_TYPES: list[str] = ["image/jpeg", "image/png", "image/webp"]
+    UPLOAD_DIR: str = "uploads/clothing"
 
     model_config = SettingsConfigDict(
         env_file=".env",

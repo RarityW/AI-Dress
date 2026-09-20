@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 from sqlalchemy import String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from app.core.database import Base
 
 class User(Base):

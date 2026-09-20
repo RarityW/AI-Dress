@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { ApiResponse, RecommendRequest } from '../types/api';
-import { ClothingItem, RecommendationRecord } from '../types/clothing';
+import { ClothingItem, ClothingItemCreate, ClothingListResponse, ImageUploadResponse, RecommendationRecord } from '../types/clothing';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
@@ -26,18 +26,35 @@ export const getHealth = (): Promise<ApiResponse<any>> => {
   return api.get('/api/v1/health');
 };
 
-export const getClothingList = (): Promise<ApiResponse<ClothingItem[]>> => {
-  return api.get('/api/v1/clothing');
-};
-
-export const analyzeClothing = (file: File): Promise<ApiResponse<ClothingItem>> => {
+export const uploadClothingImage = (file: File): Promise<ApiResponse<ImageUploadResponse>> => {
   const formData = new FormData();
   formData.append('file', file);
-  return api.post('/api/v1/clothing/analyze', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
+  return api.post('/api/v1/clothing/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
   });
+};
+
+export const createClothing = (data: ClothingItemCreate): Promise<ApiResponse<ClothingItem>> => {
+  return api.post('/api/v1/clothing', data);
+};
+
+export const getClothingList = (params?: {
+  page?: number;
+  page_size?: number;
+  category?: string;
+  style?: string;
+  season?: string;
+}): Promise<ApiResponse<ClothingListResponse>> => {
+  return api.get('/api/v1/clothing', { params });
+};
+
+export const getClothingDetail = (id: string): Promise<ApiResponse<ClothingItem>> => {
+  return api.get(`/api/v1/clothing/${id}`);
+};
+
+export const deleteClothing = (id: string): Promise<ApiResponse<null>> => {
+  return api.delete(`/api/v1/clothing/${id}`);
 };
 
 export const getRecommendations = (params: RecommendRequest): Promise<ApiResponse<RecommendationRecord[]>> => {

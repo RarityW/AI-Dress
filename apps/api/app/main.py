@@ -8,10 +8,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.core.database import Base, engine
+from app.core.database import Base, engine, SessionLocal
+from app.models.user import User
 
 
 @asynccontextmanager
@@ -23,8 +25,25 @@ async def lifespan(app: FastAPI):
         db_dir = os.path.dirname(db_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
+            
+    # 确保上传目录存在
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    os.makedirs("uploads", exist_ok=True)
 
     Base.metadata.create_all(bind=engine)
+    
+    # 自动创建默认用户（暂无用户系统时使用）
+    with SessionLocal() as db:
+        default_user = db.query(User).filter(User.username == "default_user").first()
+        if not default_user:
+            default_user = User(
+                username="default_user",
+                email="default@yijian.ai",
+                hashed_password="not-a-real-password",
+            )
+            db.add(default_user)
+            db.commit()
+            
     yield
 
 
@@ -34,6 +53,12 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# 确保上传目录在模块加载时就存在（StaticFiles 初始化时会检查）
+os.makedirs("uploads/clothing", exist_ok=True)
+
+# 挂载静态文件目录用于图片展示
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # CORS 中间件
 app.add_middleware(

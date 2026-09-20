@@ -5,6 +5,7 @@ import WardrobePage from './pages/WardrobePage';
 import UploadPage from './pages/UploadPage';
 import RecommendPage from './pages/RecommendPage';
 import NotFoundPage from './pages/NotFoundPage';
+import ClothingDetailPage from './pages/ClothingDetailPage';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/wardrobe" element={<WardrobePage />} />
+          <Route path="/wardrobe/:id" element={<ClothingDetailPage />} />
           <Route path="/upload" element={<UploadPage />} />
           <Route path="/recommend" element={<RecommendPage />} />
           <Route path="*" element={<NotFoundPage />} />

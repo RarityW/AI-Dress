@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Sparkles,
@@ -10,9 +10,13 @@ import {
   RefreshCw,
   Plus,
   AlertCircle,
-  Award
+  Award,
+  MapPin,
+  CheckCircle2,
+  Wind,
+  Droplets
 } from 'lucide-react';
-import { getRecommendations, submitRecommendationFeedback } from '../services/api';
+import { getRecommendations, submitRecommendationFeedback, getWeather } from '../services/api';
 import { OutfitRecommendation, RecommendationResponse } from '../types/clothing';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -36,7 +40,13 @@ const STYLES = [
   { key: 'elegant', label: '优雅气质' },
 ];
 
-const CITIES = ['北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '南京', '西安'];
+const CITIES = [
+  '北京', '上海', '广州', '深圳', '杭州', '成都', '武汉', '南京', '西安',
+  '重庆', '天津', '苏州', '长沙', '青岛', '厦门', '合肥', '福州', '昆明',
+  '大连', '哈尔滨', '济南', '沈阳', '长春', '南昌', '郑州', '贵阳', '南宁',
+  '海口', '三亚', '乌鲁木齐', '兰州', '银川', '西宁', '呼和浩特', '拉萨',
+  '香港', '澳门', '台北'
+];
 
 export default function RecommendPage() {
   const [city, setCity] = useState('北京');
@@ -44,6 +54,56 @@ export default function RecommendPage() {
   const [weatherCondition, setWeatherCondition] = useState('晴');
   const [scene, setScene] = useState('daily');
   const [targetStyle, setTargetStyle] = useState('casual');
+
+  // 实时天气拉取与同步状态
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherInfo, setWeatherInfo] = useState<{
+    temperature: number;
+    condition: string;
+    condition_code: string;
+    humidity?: number;
+    wind_speed?: number;
+    feels_like?: number;
+    source: string;
+  } | null>(null);
+
+  const fetchWeather = async (targetCity: string) => {
+    setWeatherLoading(true);
+    try {
+      const resp = await getWeather(targetCity);
+      if ((resp.success || (resp as any).code === 200) && resp.data) {
+        const w = resp.data;
+        setWeatherInfo(w);
+        if (typeof w.temperature === 'number') {
+          setTemperature(Math.round(w.temperature));
+        }
+        if (w.condition) {
+          const text = w.condition;
+          if (text.includes('雨')) {
+            setWeatherCondition('小雨');
+          } else if (text.includes('阴')) {
+            setWeatherCondition('阴');
+          } else if (text.includes('多云') || text.includes('云')) {
+            setWeatherCondition('多云');
+          } else if (text.includes('雪')) {
+            setWeatherCondition('小雪');
+          } else if (text.includes('风')) {
+            setWeatherCondition('大风');
+          } else {
+            setWeatherCondition('晴');
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('获取城市天气失败，保留默认预设:', err);
+    } finally {
+      setWeatherLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWeather(city);
+  }, [city]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,7 +234,60 @@ export default function RecommendPage() {
                 <option value="阴">阴天微凉 ☁️</option>
                 <option value="小雨">阴雨有雨 🌧️</option>
                 <option value="大风">大风降温 💨</option>
+                <option value="小雪">降雪微寒 ❄️</option>
               </select>
+            </div>
+          </div>
+
+          {/* 实时天气同步状态提示条 */}
+          <div className="bg-blue-50/60 rounded-xl p-3 sm:p-4 border border-blue-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-blue-900">
+              {weatherLoading ? (
+                <>
+                  <RefreshCw className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
+                  <span className="font-medium">正在获取「{city}」实时气象数据...</span>
+                </>
+              ) : weatherInfo ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="font-semibold text-gray-800">
+                      已同步「{city}」实时气温：{weatherInfo.temperature}℃ ({weatherInfo.condition})
+                    </span>
+                    <span className="text-gray-500 ml-2 hidden sm:inline-flex items-center gap-2.5">
+                      <span>体感 {weatherInfo.feels_like ?? weatherInfo.temperature}℃</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Droplets className="h-3 w-3 text-blue-500" />
+                        {weatherInfo.humidity ?? 50}%
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Wind className="h-3 w-3 text-cyan-500" />
+                        {weatherInfo.wind_speed ?? 10}km/h
+                      </span>
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <MapPin className="h-4 w-4 text-blue-500 shrink-0" />
+                  <span className="text-gray-600">选择城市即可自动联网获取当地今日实时气温与天气。</span>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
+              <span className="text-gray-400 text-[11px] hidden md:inline">
+                支持手动拖拽上方滑块微调
+              </span>
+              <button
+                type="button"
+                onClick={() => fetchWeather(city)}
+                disabled={weatherLoading}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 transition-colors font-medium cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3 w-3 ${weatherLoading ? 'animate-spin' : ''}`} />
+                刷新天气
+              </button>
             </div>
           </div>
 

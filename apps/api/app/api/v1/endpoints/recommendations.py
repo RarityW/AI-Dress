@@ -14,13 +14,18 @@ from app.models.recommendation import RecommendationRecord
 from app.schemas.recommendation import (
     RecommendationRequest,
     RecommendationResponse,
-    FeedbackRequest
+    FeedbackRequest,
+    TryOnRequest,
+    TryOnResponse
 )
 from app.services.recommendation.engine import recommend_outfits
+from app.services.tryon_service import generate_tryon_image
+
 
 router = APIRouter()
 
 
+@router.post("", response_model=ApiResponse[RecommendationResponse])
 @router.post("/", response_model=ApiResponse[RecommendationResponse])
 def create_recommendations(
     request: RecommendationRequest,
@@ -103,6 +108,22 @@ def get_recommendation_history(
         })
 
     return success_response(data=result, message="获取历史推荐成功")
+
+
+@router.post("/try-on", response_model=ApiResponse[TryOnResponse])
+async def create_tryon_visualization(request: TryOnRequest):
+    """
+    基于推荐搭配单品生成 AI 模特上身试穿效果图（调用通义万相 Wanx 图像生成大模型）。
+    """
+    result = await generate_tryon_image(
+        outfit_id=request.outfit_id,
+        items=request.items,
+        gender=request.gender,
+        scene=request.scene,
+        target_style=request.target_style
+    )
+    return success_response(data=TryOnResponse(**result), message="试穿效果图生成成功")
+
 
 
 @router.post("/{record_id}/feedback", response_model=ApiResponse[Any])

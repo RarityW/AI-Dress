@@ -152,3 +152,25 @@ export interface RecommendationRecord {
   feedback_rating: number | null;
   created_at: string;
 }
+
+/** AI 模特试穿生图请求 */
+export interface TryOnRequest {
+  outfit_id: string;
+  items: Array<{
+    sub_category: string;
+    primary_color: string;
+    image_url?: string;
+  }>;
+  gender?: string;
+  scene?: string;
+  target_style?: string;
+}
+
+/** AI 模特试穿生图结果 */
+export interface TryOnResponse {
+  outfit_id: string;
+  image_url: string;
+  prompt: string;
+  source: string;
+}
+

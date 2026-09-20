@@ -14,11 +14,13 @@ import {
   MapPin,
   CheckCircle2,
   Wind,
-  Droplets
+  Droplets,
+  Camera
 } from 'lucide-react';
-import { getRecommendations, submitRecommendationFeedback, getWeather } from '../services/api';
+import { getRecommendations, submitRecommendationFeedback, getWeather, generateTryOn } from '../services/api';
 import { OutfitRecommendation, RecommendationResponse } from '../types/clothing';
 import LoadingSpinner from '../components/LoadingSpinner';
+
 
 const SCENES = [
   { key: 'daily', label: '日常休闲', desc: '舒适百搭，随性自在' },
@@ -151,6 +153,47 @@ export default function RecommendPage() {
       console.error(err);
     }
   };
+
+  // AI 模特试穿生图状态
+  const [gender, setGender] = useState<'unisex' | 'female' | 'male'>('unisex');
+  const [tryOnLoading, setTryOnLoading] = useState<Record<string, boolean>>({});
+  const [tryOnImages, setTryOnImages] = useState<Record<string, string>>({});
+  const [tryOnError, setTryOnError] = useState<Record<string, string>>({});
+
+  const handleGenerateTryOn = async (outfit: OutfitRecommendation) => {
+    const outfitId = outfit.outfit_id;
+    setTryOnLoading((prev) => ({ ...prev, [outfitId]: true }));
+    setTryOnError((prev) => ({ ...prev, [outfitId]: '' }));
+
+    try {
+      const resp = await generateTryOn({
+        outfit_id: outfitId,
+        items: outfit.items.map((i) => ({
+          sub_category: i.sub_category,
+          primary_color: i.primary_color,
+          image_url: i.image_url,
+        })),
+        gender,
+        scene,
+        target_style: targetStyle,
+      });
+
+      if ((resp.success || (resp as any).code === 200) && resp.data?.image_url) {
+        setTryOnImages((prev) => ({ ...prev, [outfitId]: resp.data.image_url }));
+      } else {
+        setTryOnError((prev) => ({ ...prev, [outfitId]: resp.message || '生成试穿大片失败，请重试' }));
+      }
+    } catch (err: any) {
+      console.error('生图异常:', err);
+      setTryOnError((prev) => ({
+        ...prev,
+        [outfitId]: err?.response?.data?.message || '生成模特试穿效果超时或网络异常，请重试',
+      }));
+    } finally {
+      setTryOnLoading((prev) => ({ ...prev, [outfitId]: false }));
+    }
+  };
+
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-16">
@@ -343,6 +386,37 @@ export default function RecommendPage() {
                 );
               })}
             </div>
+          </div>
+
+          {/* 模特偏好设置 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
+            <div className="flex items-center gap-2.5">
+              <Camera className="h-4 w-4 text-purple-600" />
+              <span className="text-xs font-semibold text-gray-700">AI 试穿模特偏好:</span>
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs">
+                {[
+                  { key: 'unisex' as const, label: '通用' },
+                  { key: 'female' as const, label: '女性模特 👩' },
+                  { key: 'male' as const, label: '男性模特 👨' },
+                ].map((g) => (
+                  <button
+                    key={g.key}
+                    type="button"
+                    onClick={() => setGender(g.key)}
+                    className={`px-3 py-1 rounded-md transition-all font-medium cursor-pointer ${
+                      gender === g.key
+                        ? 'bg-white text-purple-700 shadow-sm font-semibold'
+                        : 'text-gray-500 hover:text-gray-900'
+                    }`}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <span className="text-[11px] text-gray-400">
+              阿里云通义万相 (DashScope Wanx) 视觉生图已就绪
+            </span>
           </div>
 
           {/* 提交按钮 */}
@@ -542,6 +616,76 @@ export default function RecommendPage() {
                         <p className="text-sm text-gray-700 leading-relaxed">
                           {outfit.reason}
                         </p>
+                      </div>
+
+                      {/* AI 模特试穿可视化区域 */}
+                      <div className="pt-2 border-t border-gray-100">
+                        {tryOnImages[outfit.outfit_id] ? (
+                          <div className="bg-gradient-to-b from-purple-50/40 to-white rounded-2xl p-5 border border-purple-100/80 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Sparkles className="h-4 w-4 text-purple-600" />
+                                <span className="text-sm font-bold text-gray-900">
+                                  通义万相 AI 模特全身试穿效果大片
+                                </span>
+                                <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                                  8K Lookbook
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleGenerateTryOn(outfit)}
+                                disabled={tryOnLoading[outfit.outfit_id]}
+                                className="text-xs text-brand-600 hover:text-brand-700 font-medium inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                              >
+                                <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
+                                重新生成
+                              </button>
+                            </div>
+                            <div className="relative rounded-2xl overflow-hidden max-w-sm mx-auto shadow-lg border border-purple-100 aspect-[3/4] bg-gray-100 group">
+                              <img
+                                src={tryOnImages[outfit.outfit_id]}
+                                alt="AI 模特试穿"
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              />
+                            </div>
+                            <p className="text-center text-xs text-gray-400">
+                              基于整套单品光影与面料拓扑合成 · 可作为日常出行着装整体质感参考
+                            </p>
+                          </div>
+                        ) : tryOnLoading[outfit.outfit_id] ? (
+                          <div className="bg-purple-50/60 rounded-2xl p-8 border border-purple-200/80 text-center space-y-3">
+                            <div className="inline-flex p-3 rounded-full bg-purple-100 text-purple-600 animate-pulse">
+                              <Sparkles className="h-6 w-6 animate-spin" />
+                            </div>
+                            <div className="text-sm font-bold text-purple-900">
+                              正在由阿里云通义万相 Wanx 渲染真人模特全身试穿大片...
+                            </div>
+                            <p className="text-xs text-purple-700/80 max-w-sm mx-auto">
+                              系统正在构建专业时尚 Lookbook 摄影光影，并对当前搭配进行全身贴合渲染，预计需要 10~15 秒，请稍候。
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-purple-50/70 to-indigo-50/50 rounded-xl p-3.5 border border-purple-100">
+                            <div className="text-xs text-purple-900 flex items-center gap-2 font-medium">
+                              <Sparkles className="h-4 w-4 text-purple-600 shrink-0" />
+                              <span>想看看这套衣服在模特身上的整体上身视觉效果？</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateTryOn(outfit)}
+                              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              生成 AI 模特试穿大片
+                            </button>
+                          </div>
+                        )}
+                        {tryOnError[outfit.outfit_id] && (
+                          <p className="text-xs text-red-500 mt-2 text-center">
+                            ⚠️ {tryOnError[outfit.outfit_id]}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

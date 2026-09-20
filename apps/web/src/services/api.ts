@@ -8,7 +8,9 @@ import {
   ImageUploadResponse,
   VLMAnalysisResponse,
   RecommendationRequest,
-  RecommendationResponse
+  RecommendationResponse,
+  TryOnRequest,
+  TryOnResponse
 } from '../types/clothing';
 
 const api = axios.create({
@@ -85,6 +87,13 @@ export const getRecommendationHistory = (): Promise<ApiResponse<any[]>> => {
 
 export const getWeather = (city: string): Promise<ApiResponse<any>> => {
   return api.get('/api/v1/weather', { params: { city } });
+ };
+
+export const generateTryOn = (params: TryOnRequest): Promise<ApiResponse<TryOnResponse>> => {
+  return api.post('/api/v1/recommendations/try-on', params, {
+    timeout: 60000, // 生图任务轮询预留 60s
+  });
 };
 
 export default api;
+

@@ -60,3 +60,21 @@ class RecommendationResponse(BaseModel):
 class FeedbackRequest(BaseModel):
     """用户对推荐结果的满意度评价。"""
     rating: int = Field(..., ge=1, le=5, description="评分: 1~5 星")
+
+
+class TryOnRequest(BaseModel):
+    """AI 试穿生图请求契约。"""
+    outfit_id: str = Field(..., description="方案 UUID")
+    items: list[dict[str, Any]] = Field(..., description="方案所含单品简要列表")
+    gender: str = Field(default="unisex", description="模特性别: female, male, unisex")
+    scene: str = Field(default="daily", description="搭配场景")
+    target_style: str = Field(default="casual", description="风格基调")
+
+
+class TryOnResponse(BaseModel):
+    """AI 试穿生图结果响应。"""
+    outfit_id: str
+    image_url: str
+    prompt: str
+    source: str
+

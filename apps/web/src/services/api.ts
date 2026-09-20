@@ -6,6 +6,7 @@ import {
   ClothingItemCreate,
   ClothingListResponse,
   ImageUploadResponse,
+  VLMAnalysisResponse,
   RecommendationRequest,
   RecommendationResponse
 } from '../types/clothing';
@@ -38,6 +39,12 @@ export const uploadClothingImage = (file: File): Promise<ApiResponse<ImageUpload
   formData.append('file', file);
   return api.post('/api/v1/clothing/upload-image', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  });
+};
+
+export const analyzeClothingImage = (imageUrl: string): Promise<ApiResponse<VLMAnalysisResponse>> => {
+  return api.post('/api/v1/clothing/analyze', { image_url: imageUrl }, {
     timeout: 30000,
   });
 };

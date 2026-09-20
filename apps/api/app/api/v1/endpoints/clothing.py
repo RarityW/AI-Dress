@@ -16,8 +16,11 @@ from app.schemas.clothing import (
     ClothingItemUpdate,
     ClothingItemResponse,
     ClothingListResponse,
-    ImageUploadResponse
+    ImageUploadResponse,
+    AnalyzeImageRequest,
+    VLMAnalysisResponse
 )
+from app.services.vlm_service import analyze_clothing_image
 
 router = APIRouter()
 
@@ -64,6 +67,22 @@ async def upload_image(file: UploadFile = File(...)):
     image_url = f"/{settings.UPLOAD_DIR}/{filename}".replace("\\", "/")
     
     return success_response(data=ImageUploadResponse(image_url=image_url, filename=filename))
+
+
+@router.post("/analyze", response_model=ApiResponse[VLMAnalysisResponse])
+async def analyze_clothing(
+    request: AnalyzeImageRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    使用多模态视觉大模型智能分析已上传的衣物图片，
+    自动提取结构化服装属性（品类、款式、色彩、风格、厚度与适温）。
+    """
+    result = await analyze_clothing_image(request.image_url)
+    return success_response(
+        data=VLMAnalysisResponse.model_validate(result),
+        message="AI 智能特征提取完成"
+    )
 
 
 @router.post("/", response_model=ApiResponse[ClothingItemResponse])

@@ -60,3 +60,14 @@ class ImageUploadResponse(BaseModel):
     """图片上传成功的响应。"""
     image_url: str
     filename: str
+
+
+class AnalyzeImageRequest(BaseModel):
+    """请求 AI 分析已上传的图片。"""
+    image_url: str = Field(..., description="图片相对访问路径，如 /uploads/clothing/xxx.jpg")
+
+
+class VLMAnalysisResponse(ClothingItemBase):
+    """VLM 多模态大模型视觉智能分析输出结果。"""
+    raw_vlm_attributes: Optional[dict[str, Any]] = None
+    confidence_score: Optional[float] = Field(default=0.95, description="置信度评分 (0~1)")

@@ -58,6 +58,21 @@ export interface ImageUploadResponse {
   filename: string;
 }
 
+/** VLM 视觉大模型识别结果 */
+export interface VLMAnalysisResponse {
+  category: string;
+  sub_category: string;
+  primary_color: string;
+  secondary_color: string | null;
+  style: string;
+  thickness: string;
+  season: string[];
+  temp_min: number;
+  temp_max: number;
+  raw_vlm_attributes?: Record<string, any>;
+  confidence_score?: number;
+}
+
 /** 搭配中单品详情 */
 export interface OutfitItemDetail {
   id: string;

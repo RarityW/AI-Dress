@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Palette
 } from 'lucide-react';
-import { uploadClothingImage, createClothing } from '../services/api';
+import { uploadClothingImage, createClothing, analyzeClothingImage } from '../services/api';
 import { ClothingItemCreate } from '../types/clothing';
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -91,6 +91,8 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>('');
   const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiAnalyzed, setAiAnalyzed] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [error, setError] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -121,14 +123,43 @@ export default function UploadPage() {
     setError('');
   };
 
-  const handleUploadImage = async () => {
+  const handleUploadAndAnalyze = async () => {
     if (!file) return;
     setUploading(true);
     setError('');
     try {
+      // 1. 上传图片文件
       const res = await uploadClothingImage(file);
       if ((res.success || res.code === 200) && res.data) {
-        setImageUrl(res.data.image_url);
+        const uploadedUrl = res.data.image_url;
+        setImageUrl(uploadedUrl);
+
+        // 2. 触发 AI 视觉多模态大模型分析
+        setAnalyzing(true);
+        try {
+          const aiRes = await analyzeClothingImage(uploadedUrl);
+          if ((aiRes.success || aiRes.code === 200) && aiRes.data) {
+            const d = aiRes.data;
+            setFormData({
+              category: d.category || 'top',
+              sub_category: d.sub_category || '单品',
+              primary_color: d.primary_color || 'white',
+              secondary_color: d.secondary_color || '',
+              style: d.style || 'casual',
+              thickness: d.thickness || 'medium',
+              season: Array.isArray(d.season) && d.season.length > 0 ? d.season : ['spring', 'autumn'],
+              temp_min: d.temp_min ?? 15,
+              temp_max: d.temp_max ?? 25,
+              raw_vlm_attributes: d.raw_vlm_attributes,
+            });
+            setAiAnalyzed(true);
+          }
+        } catch (aiErr) {
+          console.warn('AI 视觉分析遇到问题，进入手动核对模式:', aiErr);
+        } finally {
+          setAnalyzing(false);
+        }
+
         setStep(2);
       } else {
         setError(res.message || '图片上传失败，请检查网络');
@@ -320,18 +351,19 @@ export default function UploadPage() {
 
             <button
               type="button"
-              onClick={handleUploadImage}
-              disabled={!file || uploading}
+              onClick={handleUploadAndAnalyze}
+              disabled={!file || uploading || analyzing}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-slate-900 hover:bg-brand-600 shadow-md transition-all disabled:opacity-40 cursor-pointer active:scale-95"
             >
-              {uploading ? (
+              {uploading || analyzing ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>正在上传照片...</span>
+                  <span>{analyzing ? 'AI 多模态智能识别中...' : '正在上传照片...'}</span>
                 </>
               ) : (
                 <>
-                  <span>下一步：标定属性</span>
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>上传照片并一键 AI 识别</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -343,6 +375,22 @@ export default function UploadPage() {
       {/* 步骤 2: 服装属性核对与标定 */}
       {step === 2 && (
         <form onSubmit={handleSubmitClothing} className="bg-white rounded-3xl border border-slate-200/80 p-8 shadow-soft space-y-8">
+          {/* AI 识别成功徽标通知 */}
+          {aiAnalyzed && (
+            <div className="bg-gradient-to-r from-brand-50 via-indigo-50 to-purple-50 border border-brand-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5 text-xs text-brand-900 font-medium">
+                <Sparkles className="w-5 h-5 text-brand-600 shrink-0 animate-pulse" />
+                <span>
+                  <strong>AI 视觉大模型已自动解析！</strong>
+                  已智能识别品类、主色调、面料厚度与适温温区并为您预填表单，请核对确认或根据喜好微调。
+                </span>
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-600 text-white shrink-0">
+                AI PARSED
+              </span>
+            </div>
+          )}
+
           {/* 快捷模板一键填入 */}
           <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/70 space-y-2.5">
             <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">

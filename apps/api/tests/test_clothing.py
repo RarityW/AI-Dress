@@ -124,3 +124,59 @@ def test_delete_clothing(client):
     
     get_resp = client.get(f"/api/v1/clothing/{item_id}")
     assert get_resp.status_code == 404
+
+
+def test_clean_and_normalize_vlm_output():
+    from app.services.vlm_service import clean_and_normalize_vlm_output
+
+    raw_ai_text = """```json
+    {
+        "category": "上装",
+        "sub_category": "短袖T恤",
+        "primary_color": "白色",
+        "secondary_color": "黑色",
+        "style": "休闲舒适",
+        "thickness": "薄",
+        "season": ["春", "夏"],
+        "temp_min": "20.5",
+        "temp_max": "32.0"
+    }
+    ```"""
+    cleaned = clean_and_normalize_vlm_output(raw_ai_text)
+    assert cleaned["category"] == "top"
+    assert cleaned["style"] == "casual"
+    assert cleaned["primary_color"] == "white"
+    assert cleaned["secondary_color"] == "black"
+    assert cleaned["thickness"] == "thin"
+    assert "spring" in cleaned["season"]
+    assert "summer" in cleaned["season"]
+    assert cleaned["temp_min"] == 20.5
+    assert cleaned["temp_max"] == 32.0
+
+
+def test_vlm_analyze_endpoint(client):
+    # 1. 上传图片测试
+    test_image = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+    upload_resp = client.post(
+        "/api/v1/clothing/upload-image",
+        files={"file": ("vlm_test.png", io.BytesIO(test_image), "image/png")}
+    )
+    assert upload_resp.status_code == 200
+    img_url = upload_resp.json()["data"]["image_url"]
+
+    # 2. 调用 /analyze 端点进行智能视觉特征提取
+    analyze_resp = client.post(
+        "/api/v1/clothing/analyze",
+        json={"image_url": img_url}
+    )
+    assert analyze_resp.status_code == 200
+    data = analyze_resp.json()
+    assert data["success"] is True
+    assert "category" in data["data"]
+    assert "sub_category" in data["data"]
+    assert "primary_color" in data["data"]
+    assert "style" in data["data"]
+    assert "thickness" in data["data"]
+    assert isinstance(data["data"]["season"], list)
+    assert "temp_min" in data["data"]
+    assert "temp_max" in data["data"]

@@ -1,11 +1,18 @@
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import { ApiResponse, RecommendRequest } from '../types/api';
-import { ClothingItem, ClothingItemCreate, ClothingListResponse, ImageUploadResponse, RecommendationRecord } from '../types/clothing';
+import { ApiResponse } from '../types/api';
+import {
+  ClothingItem,
+  ClothingItemCreate,
+  ClothingListResponse,
+  ImageUploadResponse,
+  RecommendationRequest,
+  RecommendationResponse
+} from '../types/clothing';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
-  timeout: 10000,
+  timeout: 15000,
 });
 
 api.interceptors.request.use((config) => {
@@ -57,8 +64,16 @@ export const deleteClothing = (id: string): Promise<ApiResponse<null>> => {
   return api.delete(`/api/v1/clothing/${id}`);
 };
 
-export const getRecommendations = (params: RecommendRequest): Promise<ApiResponse<RecommendationRecord[]>> => {
+export const getRecommendations = (params: RecommendationRequest): Promise<ApiResponse<RecommendationResponse>> => {
   return api.post('/api/v1/recommendations', params);
+};
+
+export const submitRecommendationFeedback = (recordId: string, rating: number): Promise<ApiResponse<any>> => {
+  return api.post(`/api/v1/recommendations/${recordId}/feedback`, { rating });
+};
+
+export const getRecommendationHistory = (): Promise<ApiResponse<any[]>> => {
+  return api.get('/api/v1/recommendations/history');
 };
 
 export const getWeather = (city: string): Promise<ApiResponse<any>> => {

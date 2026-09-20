@@ -58,7 +58,60 @@ export interface ImageUploadResponse {
   filename: string;
 }
 
-/** 穿搭方案 */
+/** 搭配中单品详情 */
+export interface OutfitItemDetail {
+  id: string;
+  category: string;
+  sub_category: string;
+  primary_color: string;
+  secondary_color: string | null;
+  style: string;
+  thickness: string;
+  image_url: string;
+  temp_min: number;
+  temp_max: number;
+}
+
+/** 评分维度明细 */
+export interface ScoreBreakdown {
+  weather_score: number;
+  style_score: number;
+  scene_score: number;
+  color_score: number;
+  overall_score: number;
+}
+
+/** 一套穿搭推荐结果 */
+export interface OutfitRecommendation {
+  outfit_id: string;
+  items: OutfitItemDetail[];
+  scores: ScoreBreakdown;
+  reason: string;
+}
+
+/** 推荐请求参数 */
+export interface RecommendationRequest {
+  city: string;
+  temperature?: number;
+  weather_condition?: string;
+  scene: string;
+  target_style: string;
+  top_k?: number;
+}
+
+/** 推荐响应结果 */
+export interface RecommendationResponse {
+  record_id?: string | null;
+  city: string;
+  current_temp: number;
+  weather_condition: string;
+  scene: string;
+  target_style: string;
+  total_candidates: number;
+  recommendations: OutfitRecommendation[];
+}
+
+/** 穿搭方案实体 */
 export interface Outfit {
   id: string;
   user_id: string;
@@ -70,7 +123,7 @@ export interface Outfit {
   created_at: string;
 }
 
-/** 推荐记录 */
+/** 推荐历史记录 */
 export interface RecommendationRecord {
   id: string;
   user_id: string;

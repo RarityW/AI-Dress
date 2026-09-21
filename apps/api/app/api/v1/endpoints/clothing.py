@@ -21,22 +21,219 @@ from app.schemas.clothing import (
     VLMAnalysisResponse
 )
 from app.services.vlm_service import analyze_clothing_image
+from app.core.security import get_current_user_optional as get_current_user
 
 router = APIRouter()
 
-def get_current_user(db: Session = Depends(get_db)) -> User:
-    """获取当前用户（暂无登录系统，使用默认用户）。"""
-    user = db.query(User).filter(User.username == "default_user").first()
-    if not user:
-        user = User(
-            username="default_user",
-            email="default@yijian.ai",
-            hashed_password="not-a-real-password",
+SAMPLE_ITEMS = [
+    {
+        "file_name": "seed_white_tshirt.jpg",
+        "category": "top",
+        "sub_category": "短袖T恤",
+        "primary_color": "白色",
+        "secondary_color": "无",
+        "style": "casual",
+        "thickness": "thin",
+        "season": ["summer", "spring", "autumn"],
+        "temp_min": 18.0,
+        "temp_max": 36.0,
+    },
+    {
+        "file_name": "seed_grey_hoodie.jpg",
+        "category": "top",
+        "sub_category": "连帽卫衣",
+        "primary_color": "灰色",
+        "secondary_color": "白色",
+        "style": "casual",
+        "thickness": "medium",
+        "season": ["spring", "autumn", "winter"],
+        "temp_min": 10.0,
+        "temp_max": 22.0,
+    },
+    {
+        "file_name": "seed_blue_shirt.jpg",
+        "category": "top",
+        "sub_category": "长袖衬衫",
+        "primary_color": "蓝色",
+        "secondary_color": "白色",
+        "style": "formal",
+        "thickness": "medium",
+        "season": ["spring", "autumn", "summer"],
+        "temp_min": 15.0,
+        "temp_max": 27.0,
+    },
+    {
+        "file_name": "seed_black_sweater.jpg",
+        "category": "top",
+        "sub_category": "针织毛衣",
+        "primary_color": "黑色",
+        "secondary_color": "无",
+        "style": "vintage",
+        "thickness": "thick",
+        "season": ["autumn", "winter"],
+        "temp_min": 2.0,
+        "temp_max": 16.0,
+    },
+    {
+        "file_name": "seed_blue_jeans.jpg",
+        "category": "bottom",
+        "sub_category": "牛仔裤",
+        "primary_color": "蓝色",
+        "secondary_color": "无",
+        "style": "casual",
+        "thickness": "medium",
+        "season": ["spring", "summer", "autumn", "winter"],
+        "temp_min": 8.0,
+        "temp_max": 28.0,
+    },
+    {
+        "file_name": "seed_black_trousers.jpg",
+        "category": "bottom",
+        "sub_category": "西装裤",
+        "primary_color": "黑色",
+        "secondary_color": "无",
+        "style": "formal",
+        "thickness": "medium",
+        "season": ["spring", "autumn", "winter"],
+        "temp_min": 10.0,
+        "temp_max": 25.0,
+    },
+    {
+        "file_name": "seed_khaki_chinos.jpg",
+        "category": "bottom",
+        "sub_category": "休闲裤",
+        "primary_color": "卡其色",
+        "secondary_color": "无",
+        "style": "casual",
+        "thickness": "medium",
+        "season": ["spring", "summer", "autumn"],
+        "temp_min": 12.0,
+        "temp_max": 29.0,
+    },
+    {
+        "file_name": "seed_trench_coat.jpg",
+        "category": "coat",
+        "sub_category": "风衣",
+        "primary_color": "卡其色",
+        "secondary_color": "黑色",
+        "style": "elegant",
+        "thickness": "medium",
+        "season": ["spring", "autumn"],
+        "temp_min": 10.0,
+        "temp_max": 20.0,
+    },
+    {
+        "file_name": "seed_black_blazer.jpg",
+        "category": "coat",
+        "sub_category": "西装外套",
+        "primary_color": "黑色",
+        "secondary_color": "深灰",
+        "style": "formal",
+        "thickness": "medium",
+        "season": ["spring", "autumn", "winter"],
+        "temp_min": 8.0,
+        "temp_max": 22.0,
+    },
+    {
+        "file_name": "seed_down_jacket.jpg",
+        "category": "coat",
+        "sub_category": "羽绒服",
+        "primary_color": "黑色",
+        "secondary_color": "无",
+        "style": "casual",
+        "thickness": "thick",
+        "season": ["winter"],
+        "temp_min": -15.0,
+        "temp_max": 8.0,
+    },
+    {
+        "file_name": "seed_white_sneakers.jpg",
+        "category": "shoes",
+        "sub_category": "板鞋",
+        "primary_color": "白色",
+        "secondary_color": "灰色",
+        "style": "casual",
+        "thickness": "medium",
+        "season": ["spring", "summer", "autumn", "winter"],
+        "temp_min": 5.0,
+        "temp_max": 35.0,
+    },
+    {
+        "file_name": "seed_leather_shoes.jpg",
+        "category": "shoes",
+        "sub_category": "皮鞋",
+        "primary_color": "黑色",
+        "secondary_color": "棕色",
+        "style": "formal",
+        "thickness": "medium",
+        "season": ["spring", "summer", "autumn", "winter"],
+        "temp_min": 5.0,
+        "temp_max": 32.0,
+    },
+    {
+        "file_name": "seed_sports_shoes.jpg",
+        "category": "shoes",
+        "sub_category": "运动鞋",
+        "primary_color": "红色",
+        "secondary_color": "灰色",
+        "style": "sporty",
+        "thickness": "medium",
+        "season": ["spring", "summer", "autumn", "winter"],
+        "temp_min": 8.0,
+        "temp_max": 35.0,
+    },
+    {
+        "file_name": "seed_boots.jpg",
+        "category": "shoes",
+        "sub_category": "靴子",
+        "primary_color": "棕色",
+        "secondary_color": "黑色",
+        "style": "vintage",
+        "thickness": "thick",
+        "season": ["autumn", "winter"],
+        "temp_min": -5.0,
+        "temp_max": 18.0,
+    },
+]
+
+
+@router.post("/import-samples", response_model=ApiResponse[dict])
+def import_sample_wardrobe(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    为当前登录用户一键注入 14 件经典四季测试单品（胶囊衣橱）。
+    方便新注册用户开箱即用体验完整的智能穿搭推荐。
+    """
+    created_count = 0
+    for item_def in SAMPLE_ITEMS:
+        image_url = f"/uploads/clothing/{item_def['file_name']}"
+        clothing = ClothingItem(
+            user_id=current_user.id,
+            category=item_def["category"],
+            sub_category=item_def["sub_category"],
+            primary_color=item_def["primary_color"],
+            secondary_color=item_def["secondary_color"],
+            style=item_def["style"],
+            thickness=item_def["thickness"],
+            season=item_def["season"],
+            temp_min=item_def["temp_min"],
+            temp_max=item_def["temp_max"],
+            image_url=image_url,
+            raw_vlm_attributes={
+                "source": "sample_seed_capsule",
+                "recommended_for": "course_demo",
+            },
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    return user
+        db.add(clothing)
+        created_count += 1
+
+    db.commit()
+    return success_response(
+        data={"count": created_count},
+        message=f"已成功为您的专属衣橱导入 {created_count} 件精选四季单品！",
+    )
 
 @router.post("/upload-image", response_model=ApiResponse[ImageUploadResponse])
 async def upload_image(file: UploadFile = File(...)):
@@ -85,6 +282,7 @@ async def analyze_clothing(
     )
 
 
+@router.post("", response_model=ApiResponse[ClothingItemResponse])
 @router.post("/", response_model=ApiResponse[ClothingItemResponse])
 def create_clothing(
     item_in: ClothingItemCreate,
@@ -113,6 +311,7 @@ def create_clothing(
     return success_response(data=ClothingItemResponse.model_validate(db_item))
 
 
+@router.get("", response_model=ApiResponse[ClothingListResponse])
 @router.get("/", response_model=ApiResponse[ClothingListResponse])
 def list_clothing(
     page: int = Query(1, ge=1),

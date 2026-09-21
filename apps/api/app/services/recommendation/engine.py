@@ -30,19 +30,40 @@ def calculate_overall_score(
     style_score: float,
     scene_score: float,
     color_score: float,
-    preference_score: float = 0.8
+    preference_score: float = 0.8,
+    custom_weights: dict[str, float] = None
 ) -> float:
     """
     多目标加权决策打分公式：
     S = w_weather * S_weather + w_style * S_style + w_scene * S_scene + w_color * S_color + w_pref * S_pref
-    所有权重均在 core/config.py 中可配置，杜绝硬编码。
+    支持用户自定义权重，若无则使用系统默认配置。
     """
+    w_weather = settings.WEIGHT_WEATHER
+    w_style = settings.WEIGHT_STYLE
+    w_scene = settings.WEIGHT_SCENE
+    w_color = settings.WEIGHT_COLOR
+    w_pref = settings.WEIGHT_PREFERENCE
+
+    if custom_weights:
+        w_weather = custom_weights.get("weather", w_weather)
+        w_style = custom_weights.get("style", w_style)
+        w_scene = custom_weights.get("scene", w_scene)
+        w_color = custom_weights.get("color", w_color)
+        w_pref = custom_weights.get("preference", w_pref)
+        total_w = w_weather + w_style + w_scene + w_color + w_pref
+        if total_w > 0:
+            w_weather /= total_w
+            w_style /= total_w
+            w_scene /= total_w
+            w_color /= total_w
+            w_pref /= total_w
+
     total = (
-        settings.WEIGHT_WEATHER * weather_score +
-        settings.WEIGHT_STYLE * style_score +
-        settings.WEIGHT_SCENE * scene_score +
-        settings.WEIGHT_COLOR * color_score +
-        settings.WEIGHT_PREFERENCE * preference_score
+        w_weather * weather_score +
+        w_style * style_score +
+        w_scene * scene_score +
+        w_color * color_score +
+        w_pref * preference_score
     )
     return min(1.0, max(0.0, total))
 
@@ -132,17 +153,25 @@ def item_to_detail(item: Any) -> OutfitItemDetail:
     )
 
 
-def recommend_outfits(items: list[Any], request: RecommendationRequest) -> list[OutfitRecommendation]:
+def recommend_outfits(
+    items: list[Any],
+    request: RecommendationRequest,
+    user_preference: Any = None
+) -> list[OutfitRecommendation]:
     """
     穿搭推荐核心决策主流程：
     1. 组合生成
-    2. 多因素加权评分
+    2. 多因素加权评分（气温、风格、场景、色彩与个性化偏好）
     3. 排序重排
     4. TOP-K 截断与人性化理由生成
     """
     candidates = generate_candidate_outfits(items, request.temperature)
     if not candidates:
         return []
+
+    avoided_colors = set(_get_val(user_preference, "avoided_colors", []) or [])
+    preferred_styles = set(_get_val(user_preference, "preferred_styles", []) or [])
+    custom_weights = _get_val(user_preference, "custom_weights", None) or {}
 
     scored_outfits: list[OutfitRecommendation] = []
 
@@ -151,9 +180,25 @@ def recommend_outfits(items: list[Any], request: RecommendationRequest) -> list[
         s_score = score_outfit_style(combo, request.target_style)
         sc_score = score_outfit_scene(combo, request.scene)
         c_score = score_outfit_color(combo)
-        p_score = 0.8  # 基础偏好分
+        
+        # 基于用户偏好的个性化修正
+        p_score = 0.8
+        if avoided_colors:
+            for it in combo:
+                c1 = str(_get_val(it, "primary_color", ""))
+                c2 = str(_get_val(it, "secondary_color", ""))
+                if c1 in avoided_colors or c2 in avoided_colors:
+                    p_score -= 0.3
+        if preferred_styles:
+            for it in combo:
+                st = str(_get_val(it, "style", ""))
+                if st in preferred_styles:
+                    p_score += 0.1
+        p_score = min(1.0, max(0.0, p_score))
 
-        overall = calculate_overall_score(w_score, s_score, sc_score, c_score, p_score)
+        overall = calculate_overall_score(
+            w_score, s_score, sc_score, c_score, p_score, custom_weights=custom_weights
+        )
 
         breakdown = ScoreBreakdown(
             weather_score=round(w_score * 100, 1),

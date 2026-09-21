@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-to-a-random-secret-key"
     API_V1_STR: str = "/api/v1"
 
+    # --- JWT Authentication ---
+    JWT_SECRET_KEY: str = "yijian-ai-jwt-secret-key-2026-super-secure"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_HOURS: int = 24
+
     # --- Database ---
     DATABASE_URL: str = "sqlite:///./data/yijian.db"
 

@@ -7,11 +7,13 @@ import {
   Thermometer,
   Sparkles,
   ArrowRight,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
-import { getClothingList } from '../services/api';
+import { getClothingList, importSampleWardrobe } from '../services/api';
 import { ClothingItem } from '../types/clothing';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuth } from '../contexts/AuthContext';
 
 const CATEGORIES = [
   { label: '全部单品', value: '' },
@@ -39,14 +41,20 @@ const CATEGORY_NAMES: Record<string, string> = {
 };
 
 export default function WardrobePage() {
+  const { isAuthenticated } = useAuth();
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
   const fetchItems = async (category: string) => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -65,8 +73,28 @@ export default function WardrobePage() {
   };
 
   useEffect(() => {
-    fetchItems(activeCategory);
-  }, [activeCategory]);
+    if (isAuthenticated) {
+      fetchItems(activeCategory);
+    } else {
+      setLoading(false);
+    }
+  }, [activeCategory, isAuthenticated]);
+
+  const handleImportSamples = async () => {
+    setImporting(true);
+    try {
+      const res = await importSampleWardrobe();
+      if (res.success) {
+        await fetchItems(activeCategory);
+      } else {
+        alert(res.message || '导入失败');
+      }
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err.message || '导入失败');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // 客户端辅助搜索过滤
   const filteredItems = useMemo(() => {
@@ -88,6 +116,64 @@ export default function WardrobePage() {
     }
     return counts;
   }, [items]);
+
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-4xl mx-auto py-10 px-4 animate-fadeIn">
+        <div className="glass-card bg-white/90 backdrop-blur-xl rounded-3xl p-8 sm:p-14 border border-slate-200/80 shadow-xl text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-gradient-to-br from-brand-400/20 to-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-gradient-to-tr from-amber-400/20 to-brand-300/20 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-brand-700 via-brand-600 to-indigo-500 text-white flex items-center justify-center mx-auto mb-5 shadow-lg shadow-brand-500/25">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            登录解锁您的专属私人数字衣橱
+          </h2>
+          <p className="text-sm sm:text-base text-slate-500 max-w-lg mx-auto mt-3 leading-relaxed">
+            数字衣橱是您的私密着装资产库。登录后即可安全管理您的个人四季衣物资产，通过通义千问视觉大模型智能识衣，并体验个性化加权穿搭推荐。
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-8 max-w-2xl mx-auto text-left">
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+              <div className="text-xl mb-1.5">📷</div>
+              <div className="text-xs font-bold text-slate-900">视觉多模态识衣</div>
+              <div className="text-[11px] text-slate-500 mt-1">自动提取款式、主色、厚度与温区</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+              <div className="text-xl mb-1.5">🌤️</div>
+              <div className="text-xs font-bold text-slate-900">气象感知联动</div>
+              <div className="text-[11px] text-slate-500 mt-1">实时适配全国 38 城温湿度与天气</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+              <div className="text-xl mb-1.5">🎯</div>
+              <div className="text-xs font-bold text-slate-900">多目标自主决策</div>
+              <div className="text-[11px] text-slate-500 mt-1">基于个人偏好求解全局最优搭配</div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5">
+            <Link
+              to="/login"
+              state={{ from: { pathname: '/wardrobe' } }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl bg-slate-900 hover:bg-brand-600 text-white text-sm font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              <span>立即登录</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link
+              to="/login"
+              state={{ from: { pathname: '/wardrobe' }, register: true }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-bold shadow-sm transition-all cursor-pointer"
+            >
+              <span>免费注册新账号</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-16 max-w-7xl mx-auto">
@@ -202,7 +288,7 @@ export default function WardrobePage() {
                 : '录入你的第一件衣物（上装、下装、外套），即刻解锁 AI 智能穿搭推荐！'}
             </p>
           </div>
-          <div className="pt-2">
+          <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link
               to="/upload"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-slate-900 hover:bg-brand-600 shadow-md transition-all active:scale-95"
@@ -210,6 +296,21 @@ export default function WardrobePage() {
               <Plus className="w-4 h-4" />
               <span>上传第一件衣物</span>
             </Link>
+            {!searchQuery && (
+              <button
+                type="button"
+                onClick={handleImportSamples}
+                disabled={importing}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200/80 shadow-sm transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {importing ? (
+                  <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4 text-brand-600" />
+                )}
+                <span>一键导入体验示例衣橱 (14件)</span>
+              </button>
+            )}
           </div>
         </div>
       ) : (

@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.response import ApiResponse, success_response, error_response
-from app.api.v1.endpoints.clothing import get_current_user
+from app.core.security import get_current_user_optional as get_current_user
 from app.models.user import User
 from app.models.clothing import ClothingItem
+from app.models.preference import UserPreference
 from app.models.recommendation import RecommendationRecord
 from app.schemas.recommendation import (
     RecommendationRequest,
@@ -34,14 +35,15 @@ def create_recommendations(
 ):
     """
     智能穿搭推荐主接口：
-    基于用户数字衣橱中的所有衣物单品，结合气温、场景、风格等需求，
+    基于用户数字衣橱中的所有衣物单品，结合气温、场景、风格等需求以及用户偏好，
     由自研多维度推荐引擎输出 TOP-K 搭配组合与推荐理由。
     """
-    # 1. 提取当前用户所有衣橱单品
+    # 1. 提取当前用户所有衣橱单品与个性化偏好
     user_items = db.query(ClothingItem).filter(ClothingItem.user_id == current_user.id).all()
+    user_pref = db.query(UserPreference).filter(UserPreference.user_id == current_user.id).first()
 
-    # 2. 执行自主推荐算法
-    recommendations = recommend_outfits(user_items, request)
+    # 2. 执行自主推荐算法（注入用户偏好）
+    recommendations = recommend_outfits(user_items, request, user_preference=user_pref)
 
     # 3. 持久化本次推荐记录到数据库
     record_id = None

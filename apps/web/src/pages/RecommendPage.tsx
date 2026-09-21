@@ -15,9 +15,11 @@ import {
   CheckCircle2,
   Wind,
   Droplets,
-  Camera
+  Camera,
+  Bookmark,
+  Check
 } from 'lucide-react';
-import { getRecommendations, submitRecommendationFeedback, getWeather, generateTryOn } from '../services/api';
+import { getRecommendations, submitRecommendationFeedback, getWeather, generateTryOn, outfitsApi } from '../services/api';
 import { OutfitRecommendation, RecommendationResponse } from '../types/clothing';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -191,6 +193,35 @@ export default function RecommendPage() {
       }));
     } finally {
       setTryOnLoading((prev) => ({ ...prev, [outfitId]: false }));
+    }
+  };
+
+  // 搭配收藏状态
+  const [savingOutfit, setSavingOutfit] = useState<Record<string, boolean>>({});
+  const [savedOutfits, setSavedOutfits] = useState<Record<string, boolean>>({});
+
+  const handleSaveOutfit = async (outfit: OutfitRecommendation) => {
+    const outfitId = outfit.outfit_id;
+    setSavingOutfit((prev) => ({ ...prev, [outfitId]: true }));
+    try {
+      const sceneObj = SCENES.find((s) => s.key === scene);
+      const styleObj = STYLES.find((s) => s.key === targetStyle);
+      const name = `${sceneObj?.label || '精选'} · ${styleObj?.label || '优雅'}穿搭`;
+      const res = await outfitsApi.create({
+        name,
+        occasion: sceneObj?.label || scene,
+        item_ids: outfit.items.map((i) => i.id),
+        overall_score: outfit.scores.overall_score,
+      });
+      if (res.success) {
+        setSavedOutfits((prev) => ({ ...prev, [outfitId]: true }));
+      } else {
+        alert(res.message || '收藏失败');
+      }
+    } catch (err: any) {
+      alert(err.message || '收藏失败，请先登录');
+    } finally {
+      setSavingOutfit((prev) => ({ ...prev, [outfitId]: false }));
     }
   };
 
@@ -509,10 +540,37 @@ export default function RecommendPage() {
                         </span>
                         <span className="text-xs text-gray-400">ID: {outfit.outfit_id}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">综合匹配指数</span>
-                        <div className="text-xl font-extrabold text-brand-600">
-                          {outfit.scores.overall_score}%
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveOutfit(outfit)}
+                          disabled={savingOutfit[outfit.outfit_id] || savedOutfits[outfit.outfit_id]}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            savedOutfits[outfit.outfit_id]
+                              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                              : 'bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200 border border-slate-200'
+                          }`}
+                        >
+                          {savedOutfits[outfit.outfit_id] ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-amber-600" />
+                              <span>已收藏</span>
+                            </>
+                          ) : savingOutfit[outfit.outfit_id] ? (
+                            <div className="w-3.5 h-3.5 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Bookmark className="w-3.5 h-3.5" />
+                              <span>收藏此搭配</span>
+                            </>
+                          )}
+                        </button>
+                        <div className="h-6 w-px bg-slate-200" />
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">综合匹配指数</span>
+                          <div className="text-xl font-extrabold text-brand-600">
+                            {outfit.scores.overall_score}%
+                          </div>
                         </div>
                       </div>
                     </div>

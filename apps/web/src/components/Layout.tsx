@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Sparkles,
   Shirt,
-  Upload,
   Compass,
-  Github,
+  Bookmark,
+  Sliders,
   Menu,
   X,
-  Plus
+  Plus,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useAuth } from '../contexts/AuthContext';
 
 interface NavItem {
   name: string;
@@ -21,12 +24,15 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { name: '首页', href: '/', icon: Sparkles },
   { name: '数字衣橱', href: '/wardrobe', icon: Shirt },
-  { name: '上传衣物', href: '/upload', icon: Upload },
   { name: '穿搭推荐', href: '/recommend', icon: Compass },
+  { name: '我的收藏', href: '/favorites', icon: Bookmark },
+  { name: '偏好设置', href: '/preferences', icon: Sliders },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
@@ -92,23 +98,43 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             {/* 桌面端右侧操作区 */}
             <div className="hidden sm:flex items-center gap-3">
-              <a
-                href="https://github.com/RarityW/AI-Dress"
-                target="_blank"
-                rel="noreferrer"
-                className="w-10 h-10 rounded-xl border border-slate-200 hover:border-slate-300 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-50 transition-colors shadow-sm"
-                title="查看 GitHub 仓库"
-              >
-                <Github className="w-4 h-4" />
-              </a>
-
               <Link
                 to="/upload"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-slate-900 hover:bg-brand-600 shadow-sm transition-all duration-200 active:scale-95"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 shadow-sm transition-all duration-200 active:scale-95"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>录入衣物</span>
               </Link>
+
+              {isAuthenticated && user ? (
+                <div className="flex items-center gap-2 pl-1 border-l border-slate-200">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                    <div className="w-6 h-6 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center text-[11px]">
+                      {user.username[0]?.toUpperCase() || 'U'}
+                    </div>
+                    <span className="font-bold text-slate-800">{user.username}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout();
+                      navigate('/');
+                    }}
+                    className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                    title="退出登录"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  to="/login"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-brand-600 shadow-sm transition-all duration-200 active:scale-95"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>登录 / 注册</span>
+                </Link>
+              )}
             </div>
 
             {/* 移动端菜单切换按钮 */}
@@ -148,21 +174,40 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <a
-                href="https://github.com/RarityW/AI-Dress"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 py-1"
-              >
-                <Github className="w-3.5 h-3.5" />
-                <span>GitHub 仓库</span>
-              </a>
-              <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                系统运行正常
-              </span>
-            </div>
+            
+            {isAuthenticated && user ? (
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between px-3.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                  <div className="w-6 h-6 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center text-[11px]">
+                    {user.username[0]?.toUpperCase() || 'U'}
+                  </div>
+                  <span>{user.username}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout();
+                    setMobileMenuOpen(false);
+                    navigate('/');
+                  }}
+                  className="text-xs text-rose-600 font-bold hover:underline flex items-center gap-1"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>退出</span>
+                </button>
+              </div>
+            ) : (
+              <div className="pt-3 border-t border-slate-100 px-3.5">
+                <Link
+                  to="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-brand-600"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>登录 / 注册</span>
+                </Link>
+              </div>
+            )}
           </div>
         )}
       </header>

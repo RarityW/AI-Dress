@@ -10,7 +10,8 @@ import {
   X,
   Plus,
   LogOut,
-  LogIn
+  LogIn,
+  BarChart3
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: '首页', href: '/', icon: Sparkles },
   { name: '数字衣橱', href: '/wardrobe', icon: Shirt },
   { name: '穿搭推荐', href: '/recommend', icon: Compass },
+  { name: '衣橱看板', href: '/analytics', icon: BarChart3 },
   { name: '我的收藏', href: '/favorites', icon: Bookmark },
   { name: '偏好设置', href: '/preferences', icon: Sliders },
 ];

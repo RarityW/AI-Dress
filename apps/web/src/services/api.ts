@@ -19,6 +19,7 @@ import {
   Outfit,
   OutfitListResponse
 } from '../types/auth';
+import { AnalyticsOverviewResponse } from '../types/analytics';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
@@ -149,6 +150,13 @@ export const outfitsApi = {
   },
   delete: (id: string): Promise<ApiResponse<null>> => {
     return api.delete(`/api/v1/outfits/${id}`);
+  },
+};
+
+// --- 衣橱数据洞察 API ---
+export const analyticsApi = {
+  getOverview: (): Promise<ApiResponse<AnalyticsOverviewResponse>> => {
+    return api.get('/api/v1/analytics/overview');
   },
 };
 

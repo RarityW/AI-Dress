@@ -8,7 +8,8 @@ import {
   Sparkles,
   ArrowRight,
   AlertCircle,
-  Lock
+  Lock,
+  BarChart3
 } from 'lucide-react';
 import { getClothingList, importSampleWardrobe } from '../services/api';
 import { ClothingItem } from '../types/clothing';
@@ -190,6 +191,14 @@ export default function WardrobePage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            to="/analytics"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            <BarChart3 className="w-4 h-4 text-indigo-600" />
+            <span>衣橱看板</span>
+          </Link>
+
           <Link
             to="/recommend"
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 transition-colors shadow-sm"

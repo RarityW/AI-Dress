@@ -9,6 +9,7 @@ import ClothingDetailPage from './pages/ClothingDetailPage';
 import LoginPage from './pages/LoginPage';
 import PreferencesPage from './pages/PreferencesPage';
 import FavoritesPage from './pages/FavoritesPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import { AuthProvider } from './contexts/AuthContext';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/preferences" element={<PreferencesPage />} />
             <Route path="/favorites" element={<FavoritesPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Layout>

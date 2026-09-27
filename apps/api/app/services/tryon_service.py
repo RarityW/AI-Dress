@@ -34,22 +34,6 @@ DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks"
 # 使用阿里云 OutfitAnyone 官方认证的标准全身正面模特照
 PRESET_MODELS = [
     {
-        "id": "female_1",
-        "label": "雅琪 (女模)",
-        "gender": "female",
-        "thumbnail": "/uploads/models/official_model_6.jpg",
-        "local_file": "uploads/models/official_model_6.jpg",
-        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
-    },
-    {
-        "id": "female_2",
-        "label": "柔依 (女模)",
-        "gender": "female",
-        "thumbnail": "/uploads/models/official_model_1.jpg",
-        "local_file": "uploads/models/official_model_1.jpg",
-        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
-    },
-    {
         "id": "male_1",
         "label": "小轩 (男模)",
         "gender": "male",
@@ -58,11 +42,27 @@ PRESET_MODELS = [
         "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
     },
     {
+        "id": "female_1",
+        "label": "雅琪 (女模)",
+        "gender": "female",
+        "thumbnail": "/uploads/models/official_model_6.jpg",
+        "local_file": "uploads/models/official_model_6.jpg",
+        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
+    },
+    {
         "id": "male_2",
         "label": "易峰 (男模)",
         "gender": "male",
-        "thumbnail": "/uploads/models/official_model_14.jpg",
-        "local_file": "uploads/models/official_model_14.jpg",
+        "thumbnail": "/uploads/models/official_model_3.jpg",
+        "local_file": "uploads/models/official_model_3.jpg",
+        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
+    },
+    {
+        "id": "male_3",
+        "label": "Simon (男模)",
+        "gender": "male",
+        "thumbnail": "/uploads/models/official_model_4.jpg",
+        "local_file": "uploads/models/official_model_4.jpg",
         "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
     },
 ]
@@ -162,9 +162,50 @@ async def upload_file_to_dashscope_oss(
         return None
 
 
+def _sanitize_garment_image(file_path: Path, category: str) -> Path:
+    """
+    针对虚拟试穿的单品图像预处理：
+    若用户上传的是街拍或模特真人实拍照：
+    - 下装 (bottom)：若长宽比过高，裁剪掉顶部多余的上身衣物（如夹克、T恤下摆），防止上衣污染试穿结果；
+    - 上装 (top/coat)：若长宽比过高，裁剪掉底部多余的下装，防止下装色彩渗透。
+    返回处理后的临时图片路径（若无需处理则返回原图）。
+    """
+    try:
+        from PIL import Image
+        with Image.open(file_path) as img:
+            w, h = img.size
+            if h <= 0 or w <= 0:
+                return file_path
+            aspect = h / w
+
+            # 下装图片防上身污染：若为长人像图，裁切掉顶部 18%
+            if category == "bottom" and aspect > 1.3:
+                cropped = img.crop((0, int(h * 0.18), w, int(h * 0.95)))
+                cache_dir = Path("uploads/temp_cleaned")
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                clean_path = cache_dir / f"clean_{file_path.name}"
+                cropped.save(clean_path, quality=95)
+                return clean_path
+
+            # 上装图片防下身污染：若为长人像图，裁切掉底部 20%
+            elif category in ("top", "coat") and aspect > 1.4:
+                cropped = img.crop((0, 0, w, int(h * 0.82)))
+                cache_dir = Path("uploads/temp_cleaned")
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                clean_path = cache_dir / f"clean_{file_path.name}"
+                cropped.save(clean_path, quality=95)
+                return clean_path
+
+    except Exception as e:
+        logger.warning(f"图片预处理异常（忽略继续使用原图）: {e}")
+
+    return file_path
+
+
 async def _resolve_image_to_dashscope_url(
     img_url_or_path: str,
-    api_key: str
+    api_key: str,
+    category: str = ""
 ) -> Optional[str]:
     """
     将图片（可以是公网 URL，也可以是本地路径如 /uploads/...）转换为 DashScope 可解析的地址。
@@ -194,7 +235,8 @@ async def _resolve_image_to_dashscope_url(
             local_file = alt_path
 
     if local_file.exists():
-        return await upload_file_to_dashscope_oss(local_file, api_key)
+        sanitized_file = _sanitize_garment_image(local_file, category)
+        return await upload_file_to_dashscope_oss(sanitized_file, api_key)
 
     logger.warning(f"未能解析本地图片文件: {img_url_or_path}")
     return None
@@ -203,7 +245,7 @@ async def _resolve_image_to_dashscope_url(
 async def generate_virtual_tryon(
     outfit_id: str,
     items: list[dict[str, Any]],
-    model_id: str = "female_1",
+    model_id: str = "male_1",
     scene: str = "daily",
     target_style: str = "casual",
 ) -> dict[str, Any]:
@@ -259,13 +301,14 @@ async def generate_virtual_tryon(
             continue
 
         if cat in ("top", "coat") and not top_garment_url:
-            top_garment_url = await _resolve_image_to_dashscope_url(img, api_key)
+            top_garment_url = await _resolve_image_to_dashscope_url(img, api_key, category=cat)
         elif cat == "bottom" and not bottom_garment_url:
-            bottom_garment_url = await _resolve_image_to_dashscope_url(img, api_key)
+            bottom_garment_url = await _resolve_image_to_dashscope_url(img, api_key, category=cat)
 
     # 必须至少有一件衣物
     if not top_garment_url and not bottom_garment_url:
         return _error_result(outfit_id, model_id, "搭配方案中无可识别的衣物图片，无法发起试穿")
+
 
     logger.info(
         f"发起 OutfitAnyone 试穿: outfit={outfit_id}, model={model_id}, "

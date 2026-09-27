@@ -8,7 +8,9 @@ export default function LoginPage() {
   const location = useLocation();
   const { login, register, isAuthenticated } = useAuth();
 
-  const [isRegister, setIsRegister] = useState(() => !!(location.state as any)?.register);
+  const [isRegister, setIsRegister] = useState(
+    () => !!((location.state as any)?.register || (location.state as any)?.isRegister)
+  );
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

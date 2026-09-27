@@ -19,7 +19,10 @@ import {
   Bookmark,
   Check,
   Download,
+  Lock,
+  ArrowRight,
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { getRecommendations, submitRecommendationFeedback, getWeather, generateTryOn, outfitsApi, modelsApi } from '../services/api';
 import { OutfitRecommendation, RecommendationResponse, PresetModel } from '../types/clothing';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -54,6 +57,7 @@ const CITIES = [
 ];
 
 export default function RecommendPage() {
+  const { isAuthenticated } = useAuth();
   const [city, setCity] = useState('北京');
   const [temperature, setTemperature] = useState<number>(20);
   const [weatherCondition, setWeatherCondition] = useState('晴');
@@ -107,8 +111,10 @@ export default function RecommendPage() {
   };
 
   useEffect(() => {
-    fetchWeather(city);
-  }, [city]);
+    if (isAuthenticated) {
+      fetchWeather(city);
+    }
+  }, [city, isAuthenticated]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +169,7 @@ export default function RecommendPage() {
 
   // 加载预设模特列表
   useEffect(() => {
+    if (!isAuthenticated) return;
     modelsApi.getPresets().then((resp) => {
       if (resp.success && resp.data) {
         setPresetModels(resp.data);
@@ -170,13 +177,13 @@ export default function RecommendPage() {
     }).catch(() => {
       // 加载失败时使用默认 fallback 列表
       setPresetModels([
-        { id: 'female_1', label: '女性模特 A', gender: 'female', thumbnail: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=200&q=80', full_url: '' },
-        { id: 'female_2', label: '女性模特 B', gender: 'female', thumbnail: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=200&q=80', full_url: '' },
-        { id: 'male_1', label: '男性模特 A', gender: 'male', thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80', full_url: '' },
-        { id: 'male_2', label: '男性模特 B', gender: 'male', thumbnail: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&q=80', full_url: '' },
+        { id: 'male_1', label: '小轩 (男模)', gender: 'male', thumbnail: '/uploads/models/official_model_16.jpg', full_url: '/uploads/models/official_model_16.jpg' },
+        { id: 'female_1', label: '雅琪 (女模)', gender: 'female', thumbnail: '/uploads/models/official_model_6.jpg', full_url: '/uploads/models/official_model_6.jpg' },
+        { id: 'male_2', label: '易峰 (男模)', gender: 'male', thumbnail: '/uploads/models/official_model_3.jpg', full_url: '/uploads/models/official_model_3.jpg' },
+        { id: 'male_3', label: 'Simon (男模)', gender: 'male', thumbnail: '/uploads/models/official_model_4.jpg', full_url: '/uploads/models/official_model_4.jpg' },
       ]);
     });
-  }, []);
+  }, [isAuthenticated]);
 
   // AI 模特试穿生图状态
   const [tryOnLoading, setTryOnLoading] = useState<Record<string, boolean>>({});
@@ -253,6 +260,64 @@ export default function RecommendPage() {
     }
   };
 
+  // 未登录拦截引导卡片（软墙）
+  if (!isAuthenticated) {
+    return (
+      <div className="max-w-4xl mx-auto py-10 px-4 animate-fadeIn">
+        <div className="glass-card bg-white/90 backdrop-blur-xl rounded-3xl p-8 sm:p-14 border border-slate-200/80 shadow-xl text-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-gradient-to-br from-purple-400/20 to-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-gradient-to-tr from-brand-400/20 to-pink-300/20 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-brand-500 text-white flex items-center justify-center mx-auto mb-5 shadow-lg shadow-purple-500/25">
+            <Lock className="w-8 h-8" />
+          </div>
+
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            登录解锁 AI 智能穿搭推荐系统
+          </h2>
+          <p className="text-sm sm:text-base text-slate-500 max-w-lg mx-auto mt-3 leading-relaxed">
+            衣见 AI 智能推荐深度依托您的专属私密衣橱资产、个人着装偏好以及 38 城实时微气象感知。登录或注册后即可体验多目标算法自主决策与真人模特虚拟试穿！
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-8 max-w-2xl mx-auto text-left">
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+              <div className="text-xl mb-1.5">👗</div>
+              <div className="text-xs font-bold text-slate-900">私享衣橱匹配</div>
+              <div className="text-[11px] text-slate-500 mt-1">100% 调取您衣橱中的真实单品，绝不凭空捏造</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+              <div className="text-xl mb-1.5">🌦️</div>
+              <div className="text-xs font-bold text-slate-900">38 城气象微感知</div>
+              <div className="text-[11px] text-slate-500 mt-1">精准拟合温湿度、温区与出行场景需求</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+              <div className="text-xl mb-1.5">✨</div>
+              <div className="text-xs font-bold text-slate-900">真人模特虚拟试穿</div>
+              <div className="text-[11px] text-slate-500 mt-1">官方 OutfitAnyone 驱动，真实模特上身大片</div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5">
+            <Link
+              to="/login"
+              state={{ from: { pathname: '/recommend' } }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-slate-900 hover:bg-purple-600 text-white text-sm font-bold shadow-md transition-all active:scale-95 cursor-pointer"
+            >
+              <span>立即登录</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link
+              to="/login"
+              state={{ register: true, isRegister: true, from: { pathname: '/recommend' } }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold transition-all active:scale-95 cursor-pointer"
+            >
+              <span>注册新账号</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-16">

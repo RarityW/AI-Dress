@@ -63,19 +63,21 @@ class FeedbackRequest(BaseModel):
 
 
 class TryOnRequest(BaseModel):
-    """AI 试穿生图请求契约。"""
+    """AI 虚拟试穿请求契约（方案2：双图输入）。"""
     outfit_id: str = Field(..., description="方案 UUID")
-    items: list[dict[str, Any]] = Field(..., description="方案所含单品简要列表")
-    gender: str = Field(default="unisex", description="模特性别: female, male, unisex")
+    items: list[dict[str, Any]] = Field(..., description="方案所含单品简要列表（含 category, image_url）")
+    model_id: str = Field(default="female_1", description="预设模特 ID（见 GET /api/v1/models/presets）")
+    gender: str = Field(default="unisex", description="模特性别（已弃用，请改用 model_id）")
     scene: str = Field(default="daily", description="搭配场景")
     target_style: str = Field(default="casual", description="风格基调")
 
 
 class TryOnResponse(BaseModel):
-    """AI 试穿生图结果响应。"""
+    """AI 虚拟试穿结果响应。"""
     outfit_id: str
     image_url: str
-    prompt: str
+    model_id: Optional[str] = None
+    prompt: str = "wanx-virtual-tryon"
     source: str
     error: Optional[str] = None
 

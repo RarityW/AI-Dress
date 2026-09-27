@@ -17,10 +17,11 @@ import {
   Droplets,
   Camera,
   Bookmark,
-  Check
+  Check,
+  Download,
 } from 'lucide-react';
-import { getRecommendations, submitRecommendationFeedback, getWeather, generateTryOn, outfitsApi } from '../services/api';
-import { OutfitRecommendation, RecommendationResponse } from '../types/clothing';
+import { getRecommendations, submitRecommendationFeedback, getWeather, generateTryOn, outfitsApi, modelsApi } from '../services/api';
+import { OutfitRecommendation, RecommendationResponse, PresetModel } from '../types/clothing';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 
@@ -156,11 +157,32 @@ export default function RecommendPage() {
     }
   };
 
+  // 预设模特图列表状态
+  const [presetModels, setPresetModels] = useState<PresetModel[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string>('female_1');
+
+  // 加载预设模特列表
+  useEffect(() => {
+    modelsApi.getPresets().then((resp) => {
+      if (resp.success && resp.data) {
+        setPresetModels(resp.data);
+      }
+    }).catch(() => {
+      // 加载失败时使用默认 fallback 列表
+      setPresetModels([
+        { id: 'female_1', label: '女性模特 A', gender: 'female', thumbnail: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=200&q=80', full_url: '' },
+        { id: 'female_2', label: '女性模特 B', gender: 'female', thumbnail: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=200&q=80', full_url: '' },
+        { id: 'male_1', label: '男性模特 A', gender: 'male', thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80', full_url: '' },
+        { id: 'male_2', label: '男性模特 B', gender: 'male', thumbnail: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&q=80', full_url: '' },
+      ]);
+    });
+  }, []);
+
   // AI 模特试穿生图状态
-  const [gender, setGender] = useState<'unisex' | 'female' | 'male'>('unisex');
   const [tryOnLoading, setTryOnLoading] = useState<Record<string, boolean>>({});
   const [tryOnImages, setTryOnImages] = useState<Record<string, string>>({});
   const [tryOnError, setTryOnError] = useState<Record<string, string>>({});
+  const [tryOnSource, setTryOnSource] = useState<Record<string, string>>({});
 
   const handleGenerateTryOn = async (outfit: OutfitRecommendation) => {
     const outfitId = outfit.outfit_id;
@@ -171,30 +193,36 @@ export default function RecommendPage() {
       const resp = await generateTryOn({
         outfit_id: outfitId,
         items: outfit.items.map((i) => ({
+          category: i.category,
           sub_category: i.sub_category,
           primary_color: i.primary_color,
           image_url: i.image_url,
         })),
-        gender,
+        model_id: selectedModelId,
         scene,
         target_style: targetStyle,
       });
 
-      if ((resp.success || (resp as any).code === 200) && resp.data?.image_url && resp.data.source !== 'error') {
+      if ((resp.success || (resp as any).code === 200) && resp.data?.image_url) {
         setTryOnImages((prev) => ({ ...prev, [outfitId]: resp.data.image_url }));
+        setTryOnSource((prev) => ({ ...prev, [outfitId]: resp.data.source || '' }));
+        if (resp.data.source === 'error') {
+          setTryOnError((prev) => ({ ...prev, [outfitId]: resp.data?.error || '生成失败，请重试' }));
+        }
       } else {
-        setTryOnError((prev) => ({ ...prev, [outfitId]: resp.data?.error || resp.message || '生成试穿大片失败，请重试' }));
+        setTryOnError((prev) => ({ ...prev, [outfitId]: resp.data?.error || resp.message || '生成试穿效果失败，请重试' }));
       }
     } catch (err: any) {
-      console.error('生图异常:', err);
+      console.error('试穿异常:', err);
       setTryOnError((prev) => ({
         ...prev,
-        [outfitId]: err?.response?.data?.message || '生成模特试穿效果超时或网络异常，请重试',
+        [outfitId]: err?.response?.data?.message || '试穿服务超时或网络异常，请重试',
       }));
     } finally {
       setTryOnLoading((prev) => ({ ...prev, [outfitId]: false }));
     }
   };
+
 
   // 搭配收藏状态
   const [savingOutfit, setSavingOutfit] = useState<Record<string, boolean>>({});
@@ -419,35 +447,46 @@ export default function RecommendPage() {
             </div>
           </div>
 
-          {/* 模特偏好设置 */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
-            <div className="flex items-center gap-2.5">
+          {/* 虚拟试穿模特选择 */}
+          <div className="space-y-2.5 pt-3 border-t border-gray-100">
+            <div className="flex items-center gap-2">
               <Camera className="h-4 w-4 text-purple-600" />
-              <span className="text-xs font-semibold text-gray-700">AI 试穿模特偏好:</span>
-              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-xs">
-                {[
-                  { key: 'unisex' as const, label: '通用' },
-                  { key: 'female' as const, label: '女性模特 👩' },
-                  { key: 'male' as const, label: '男性模特 👨' },
-                ].map((g) => (
-                  <button
-                    key={g.key}
-                    type="button"
-                    onClick={() => setGender(g.key)}
-                    className={`px-3 py-1 rounded-md transition-all font-medium cursor-pointer ${
-                      gender === g.key
-                        ? 'bg-white text-purple-700 shadow-sm font-semibold'
-                        : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                  >
-                    {g.label}
-                  </button>
-                ))}
-              </div>
+              <span className="text-sm font-semibold text-gray-800">选择试穿模特</span>
+              <span className="text-xs text-gray-400 ml-auto">生成试穿效果图时使用的底图模特</span>
             </div>
-            <span className="text-[11px] text-gray-400">
-              阿里云通义万相 (DashScope Wanx) 视觉生图已就绪
-            </span>
+            <div className="grid grid-cols-4 gap-3">
+              {presetModels.length > 0 ? presetModels.map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => setSelectedModelId(model.id)}
+                  className={`relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer aspect-[3/4] ${
+                    selectedModelId === model.id
+                      ? 'border-purple-500 ring-2 ring-purple-300 ring-offset-1'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <img
+                    src={model.thumbnail}
+                    alt={model.label}
+                    className="w-full h-full object-cover object-top"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent pt-4 pb-1.5 px-1.5">
+                    <div className="text-white text-[10px] font-semibold text-center leading-tight">{model.label}</div>
+                  </div>
+                  {selectedModelId === model.id && (
+                    <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
+                      <Check className="w-3 h-3 text-white" />
+                    </div>
+                  )}
+                </button>
+              )) : (
+                // 加载骨架屏
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-xl bg-gray-100 animate-pulse aspect-[3/4]" />
+                ))
+              )}
+            </div>
           </div>
 
           {/* 提交按钮 */}
@@ -684,31 +723,63 @@ export default function RecommendPage() {
                               <div className="flex items-center gap-2">
                                 <Sparkles className="h-4 w-4 text-purple-600" />
                                 <span className="text-sm font-bold text-gray-900">
-                                  通义万相 AI 模特全身试穿效果大片
+                                  虚拟试穿效果图
                                 </span>
-                                <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                                  8K Lookbook
-                                </span>
+                                {tryOnSource[outfit.outfit_id] === 'wanx-virtual-tryon' && (
+                                  <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                                    Virtual Try-On ✨
+                                  </span>
+                                )}
+                                {(tryOnSource[outfit.outfit_id] === 'fallback_api_unavailable' ||
+                                  tryOnSource[outfit.outfit_id] === 'fallback_no_garment') && (
+                                  <span className="text-[11px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                                    模特参考图
+                                  </span>
+                                )}
+                                {tryOnSource[outfit.outfit_id] === 'cache' && (
+                                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                    已缓存
+                                  </span>
+                                )}
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => handleGenerateTryOn(outfit)}
-                                disabled={tryOnLoading[outfit.outfit_id]}
-                                className="text-xs text-brand-600 hover:text-brand-700 font-medium inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                              >
-                                <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
-                                重新生成
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={tryOnImages[outfit.outfit_id]}
+                                  download={`tryon_${outfit.outfit_id}.jpg`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-gray-500 hover:text-gray-700 font-medium inline-flex items-center gap-1"
+                                >
+                                  <Download className="h-3 w-3" />
+                                  下载
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateTryOn(outfit)}
+                                  disabled={tryOnLoading[outfit.outfit_id]}
+                                  className="text-xs text-brand-600 hover:text-brand-700 font-medium inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                >
+                                  <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
+                                  重新生成
+                                </button>
+                              </div>
                             </div>
                             <div className="relative rounded-2xl overflow-hidden max-w-sm mx-auto shadow-lg border border-purple-100 aspect-[3/4] bg-gray-100 group">
                               <img
                                 src={tryOnImages[outfit.outfit_id]}
-                                alt="AI 模特试穿"
+                                alt="虚拟试穿效果"
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                               />
                             </div>
+                            {tryOnError[outfit.outfit_id] && (
+                              <p className="text-xs text-amber-600 text-center bg-amber-50 rounded-lg px-3 py-2">
+                                ℹ️ {tryOnError[outfit.outfit_id]}
+                              </p>
+                            )}
                             <p className="text-center text-xs text-gray-400">
-                              基于整套单品光影与面料拓扑合成 · 可作为日常出行着装整体质感参考
+                              {tryOnSource[outfit.outfit_id] === 'wanx-virtual-tryon'
+                                ? '由阿里云 wanx-virtual-tryon 模型精准贴合生成 · 人脸来自真实模特，效果自然真实'
+                                : '模特参考图 · 实际穿着效果请参考单品图片'}
                             </p>
                           </div>
                         ) : tryOnLoading[outfit.outfit_id] ? (
@@ -717,17 +788,17 @@ export default function RecommendPage() {
                               <Sparkles className="h-6 w-6 animate-spin" />
                             </div>
                             <div className="text-sm font-bold text-purple-900">
-                              正在由阿里云通义万相 Wanx 渲染真人模特全身试穿大片...
+                              正在生成虚拟试穿效果图...
                             </div>
                             <p className="text-xs text-purple-700/80 max-w-sm mx-auto">
-                              系统正在构建专业时尚 Lookbook 摄影光影，并对当前搭配进行全身贴合渲染，预计需要 10~15 秒，请稍候。
+                              系统正在将您选择的衣物智能贴合到模特身上，预计需要 15~30 秒，请稍候。
                             </p>
                           </div>
                         ) : (
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-purple-50/70 to-indigo-50/50 rounded-xl p-3.5 border border-purple-100">
                             <div className="text-xs text-purple-900 flex items-center gap-2 font-medium">
                               <Sparkles className="h-4 w-4 text-purple-600 shrink-0" />
-                              <span>想看看这套衣服在模特身上的整体上身视觉效果？</span>
+                              <span>想看看这套衣服在模特身上的整体上身效果？选好模特后点击生成</span>
                             </div>
                             <button
                               type="button"
@@ -735,16 +806,17 @@ export default function RecommendPage() {
                               className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
                             >
                               <Sparkles className="h-3.5 w-3.5" />
-                              生成 AI 模特试穿大片
+                              生成虚拟试穿效果
                             </button>
                           </div>
                         )}
-                        {tryOnError[outfit.outfit_id] && (
+                        {tryOnError[outfit.outfit_id] && !tryOnImages[outfit.outfit_id] && (
                           <p className="text-xs text-red-500 mt-2 text-center">
                             ⚠️ {tryOnError[outfit.outfit_id]}
                           </p>
                         )}
                       </div>
+
                     </div>
                   </div>
                 );

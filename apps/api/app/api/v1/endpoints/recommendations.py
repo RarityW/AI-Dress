@@ -115,16 +115,28 @@ def get_recommendation_history(
 @router.post("/try-on", response_model=ApiResponse[TryOnResponse])
 async def create_tryon_visualization(request: TryOnRequest):
     """
-    基于推荐搭配单品生成 AI 模特上身试穿效果图（调用通义万相 Wanx 图像生成大模型）。
+    基于推荐搭配单品 + 预设模特底图生成虚拟试穿效果图（方案2：双图输入）。
+    - 人脸来自真实模特照片，永远真实自然
+    - 衣物来自用户衣橱真实图片，智能贴合到模特身上
     """
     result = await generate_tryon_image(
         outfit_id=request.outfit_id,
         items=request.items,
         gender=request.gender,
         scene=request.scene,
-        target_style=request.target_style
+        target_style=request.target_style,
+        model_id=request.model_id,
     )
-    return success_response(data=TryOnResponse(**result), message="试穿效果图生成成功")
+    response_data = TryOnResponse(
+        outfit_id=result["outfit_id"],
+        image_url=result.get("image_url", ""),
+        model_id=result.get("model_id"),
+        prompt=result.get("prompt", "wanx-virtual-tryon"),
+        source=result.get("source", "error"),
+        error=result.get("error"),
+    )
+    return success_response(data=response_data, message="试穿效果图生成成功")
+
 
 
 

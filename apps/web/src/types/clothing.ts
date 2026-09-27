@@ -153,25 +153,36 @@ export interface RecommendationRecord {
   created_at: string;
 }
 
-/** AI 模特试穿生图请求 */
+/** AI 虚拟试穿请求（方案2：双图输入）*/
 export interface TryOnRequest {
   outfit_id: string;
   items: Array<{
+    category?: string;
     sub_category: string;
     primary_color: string;
     image_url?: string;
   }>;
+  model_id?: string;
   gender?: string;
   scene?: string;
   target_style?: string;
 }
 
-/** AI 模特试穿生图结果 */
+/** AI 虚拟试穿结果 */
 export interface TryOnResponse {
   outfit_id: string;
   image_url: string;
+  model_id?: string;
   prompt: string;
   source: string;
   error?: string;
 }
 
+/** 预设模特信息 */
+export interface PresetModel {
+  id: string;
+  label: string;
+  gender: string;
+  thumbnail: string;
+  full_url: string;
+}

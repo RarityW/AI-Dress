@@ -107,7 +107,7 @@ export const getWeather = (city: string): Promise<ApiResponse<any>> => {
 
 export const generateTryOn = (params: TryOnRequest): Promise<ApiResponse<TryOnResponse>> => {
   return api.post('/api/v1/recommendations/try-on', params, {
-    timeout: 60000, // 生图任务轮询预留 60s
+    timeout: 90000, // 虚拟试穿轮询最多 60s + 网络余量
   });
 };
 
@@ -160,5 +160,17 @@ export const analyticsApi = {
   },
 };
 
-export default api;
+// --- 预设模特图 API ---
+export const modelsApi = {
+  getPresets: (): Promise<ApiResponse<Array<{
+    id: string;
+    label: string;
+    gender: string;
+    thumbnail: string;
+    full_url: string;
+  }>>> => {
+    return api.get('/api/v1/models/');
+  },
+};
 
+export default api;

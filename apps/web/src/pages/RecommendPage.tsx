@@ -725,9 +725,9 @@ export default function RecommendPage() {
                                 <span className="text-sm font-bold text-gray-900">
                                   虚拟试穿效果图
                                 </span>
-                                {tryOnSource[outfit.outfit_id] === 'wanx-virtual-tryon' && (
+                                {(tryOnSource[outfit.outfit_id] === 'aitryon' || tryOnSource[outfit.outfit_id] === 'wanx-virtual-tryon') && (
                                   <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                                    Virtual Try-On ✨
+                                    OutfitAnyone 试衣 ✨
                                   </span>
                                 )}
                                 {(tryOnSource[outfit.outfit_id] === 'fallback_api_unavailable' ||
@@ -777,8 +777,8 @@ export default function RecommendPage() {
                               </p>
                             )}
                             <p className="text-center text-xs text-gray-400">
-                              {tryOnSource[outfit.outfit_id] === 'wanx-virtual-tryon'
-                                ? '由阿里云 wanx-virtual-tryon 模型精准贴合生成 · 人脸来自真实模特，效果自然真实'
+                              {tryOnSource[outfit.outfit_id] === 'aitryon' || tryOnSource[outfit.outfit_id] === 'wanx-virtual-tryon' || tryOnSource[outfit.outfit_id] === 'cache'
+                                ? '由阿里云百炼 OutfitAnyone (aitryon) 大模型智能合成 · 真实模特身姿，衣物精准试穿'
                                 : '模特参考图 · 实际穿着效果请参考单品图片'}
                             </p>
                           </div>

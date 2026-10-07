@@ -63,13 +63,14 @@ class FeedbackRequest(BaseModel):
 
 
 class TryOnRequest(BaseModel):
-    """AI 虚拟试穿请求契约（方案2：双图输入）。"""
+    """AI 虚拟试穿与生图请求契约。"""
     outfit_id: str = Field(..., description="方案 UUID")
-    items: list[dict[str, Any]] = Field(..., description="方案所含单品简要列表（含 category, image_url）")
-    model_id: str = Field(default="female_1", description="预设模特 ID（见 GET /api/v1/models/presets）")
-    gender: str = Field(default="unisex", description="模特性别（已弃用，请改用 model_id）")
+    items: list[dict[str, Any]] = Field(..., description="方案所含单品简要列表（含 category, image_url 等）")
+    model_id: str = Field(default="male_1", description="预设模特 ID（见 GET /api/v1/models/presets）")
+    gender: str = Field(default="unisex", description="模特性别")
     scene: str = Field(default="daily", description="搭配场景")
     target_style: str = Field(default="casual", description="风格基调")
+    engine: str = Field(default="qwen", description="生图引擎：qwen (通义千问真实人像大片) 或 aitryon (OutfitAnyone 像素级试衣)")
 
 
 class TryOnResponse(BaseModel):
@@ -77,7 +78,8 @@ class TryOnResponse(BaseModel):
     outfit_id: str
     image_url: str
     model_id: Optional[str] = None
-    prompt: str = "wanx-virtual-tryon"
+    engine: str = "qwen"
+    prompt: str = "qwen-image-plus"
     source: str
     error: Optional[str] = None
 

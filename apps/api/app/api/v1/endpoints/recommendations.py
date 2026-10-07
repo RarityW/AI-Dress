@@ -126,16 +126,18 @@ async def create_tryon_visualization(request: TryOnRequest):
         scene=request.scene,
         target_style=request.target_style,
         model_id=request.model_id,
+        engine=request.engine,
     )
     response_data = TryOnResponse(
         outfit_id=result["outfit_id"],
         image_url=result.get("image_url", ""),
         model_id=result.get("model_id"),
-        prompt=result.get("prompt", "wanx-virtual-tryon"),
+        engine=result.get("engine", request.engine),
+        prompt=result.get("prompt", "qwen-image-plus"),
         source=result.get("source", "error"),
         error=result.get("error"),
     )
-    return success_response(data=response_data, message="试穿效果图生成成功")
+    return success_response(data=response_data, message="生图/试穿效果图生成成功")
 
 
 

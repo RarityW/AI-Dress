@@ -1,14 +1,13 @@
 """
-AI 虚拟试穿服务 (Virtual Try-On Service)。
+AI 虚拟试穿与时尚生图服务 (Virtual Try-On & Fashion Generation Service)。
 
-方案2：双图输入图像级虚拟试穿。
-  - 输入1：高质量官方专业模特底图（站姿正面全身）
-  - 输入2：用户衣橱真实单品（通过百炼官方通道自动上传至临时 OSS 进行解析）
-  - 模型：阿里云百炼官方 OutfitAnyone 虚拟试穿模型 (aitryon)
-  - 特性：
-    1. 人脸完全保真：保持真实模特五官特征与发型光影，彻底告别畸变
-    2. 面料智能贴合：精准解析服装纹理、褶皱、剪裁并迁移至模特身姿
-    3. 全自动本地图片上云：通过 DashScope getPolicy 临时通道无缝上传本地图片，无需公网 IP
+支持双生图引擎：
+1. 🌟 通义千问生图旗舰 (Qwen-Image-Plus)：
+   - 基于搭配中单品的材质、版型、色彩与穿搭场景，生成超真实自然人像时尚大片。
+   - 具有真实皮肤质感、自然微表情、发丝光影和单反景深，彻底告别假面与畸变。
+2. 👗 百炼高保真虚拟试衣 (OutfitAnyone aitryon-plus)：
+   - 基于用户衣橱真实平铺图片（通过百炼官方通道自动上传至临时 OSS 进行解析）。
+   - 1:1 提取服装材质与版型精确贴合至选定的模特身姿。
 """
 import asyncio
 import logging
@@ -26,43 +25,85 @@ logger = logging.getLogger(__name__)
 DASHSCOPE_SYNTHESIS_URL = (
     "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2image/image-synthesis"
 )
+DASHSCOPE_T2I_URL = (
+    "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+)
 DASHSCOPE_UPLOADS_URL = "https://dashscope.aliyuncs.com/api/v1/uploads"
 DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks"
 
 
-# ── 官方预设模特图库 ────────────────────────────────────────────────────────
-# 使用阿里云 OutfitAnyone 官方认证的标准全身正面模特照
+# ── 官方预设模特图库 (8 位男女专业模特) ────────────────────────────────────
 PRESET_MODELS = [
     {
         "id": "male_1",
-        "label": "小轩 (男模)",
+        "label": "小轩 (男模 · 阳光俊朗)",
         "gender": "male",
         "thumbnail": "/uploads/models/official_model_16.jpg",
         "local_file": "uploads/models/official_model_16.jpg",
+        "persona": "handsome and confident East Asian young male model in his 20s, clean-shaven, sharp jawline, natural friendly expression",
         "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
     },
     {
         "id": "female_1",
-        "label": "雅琪 (女模)",
+        "label": "雅琪 (女模 · 优雅知性)",
         "gender": "female",
         "thumbnail": "/uploads/models/official_model_6.jpg",
         "local_file": "uploads/models/official_model_6.jpg",
+        "persona": "elegant and graceful East Asian female model in her 20s, sophisticated natural makeup, soft smile, gentle refined features",
         "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
     },
     {
         "id": "male_2",
-        "label": "易峰 (男模)",
+        "label": "易峰 (男模 · 商务沉稳)",
         "gender": "male",
         "thumbnail": "/uploads/models/official_model_3.jpg",
         "local_file": "uploads/models/official_model_3.jpg",
+        "persona": "mature and poised Asian male model in his late 20s, calm confident gaze, well-groomed hair, refined professional posture",
+        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
+    },
+    {
+        "id": "female_2",
+        "label": "柔依 (女模 · 清新甜美)",
+        "gender": "female",
+        "thumbnail": "/uploads/models/official_model_1.jpg",
+        "local_file": "uploads/models/official_model_1.jpg",
+        "persona": "fresh and sweet Asian female model in her early 20s, radiant smile, bright expressive eyes, natural healthy glow",
         "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
     },
     {
         "id": "male_3",
-        "label": "Simon (男模)",
+        "label": "Simon (男模 · 混血高级)",
         "gender": "male",
         "thumbnail": "/uploads/models/official_model_4.jpg",
         "local_file": "uploads/models/official_model_4.jpg",
+        "persona": "stylish modern Asian model with sharp facial contours, charismatic gaze, contemporary fashionable aura",
+        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
+    },
+    {
+        "id": "female_3",
+        "label": "诗涵 (女模 · 都市摩登)",
+        "gender": "female",
+        "thumbnail": "/uploads/models/official_model_2.jpg",
+        "local_file": "uploads/models/official_model_2.jpg",
+        "persona": "chic modern urban Asian female model, minimalist fashion sense, poised demeanor, flawless subtle beauty",
+        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
+    },
+    {
+        "id": "male_4",
+        "label": "宇航 (男模 · 潮酷街头)",
+        "gender": "male",
+        "thumbnail": "/uploads/models/official_model_8.jpg",
+        "local_file": "uploads/models/official_model_8.jpg",
+        "persona": "cool athletic East Asian male model, stylish streetwear vibe, toned posture, casual relaxed expression",
+        "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
+    },
+    {
+        "id": "female_4",
+        "label": "语晴 (女模 · 元气日常)",
+        "gender": "female",
+        "thumbnail": "/uploads/models/official_model_5.jpg",
+        "local_file": "uploads/models/official_model_5.jpg",
+        "persona": "youthful vibrant East Asian female model, natural cheerful smile, approachable chic style",
         "fallback_url": "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250626/ubznva/model_person.png",
     },
 ]
@@ -85,7 +126,7 @@ def get_preset_models() -> list[dict[str, str]]:
     ]
 
 
-def _get_model_config(model_id: str) -> dict[str, str]:
+def _get_model_config(model_id: str) -> dict[str, Any]:
     """根据 ID 获取模特配置。"""
     for m in PRESET_MODELS:
         if m["id"] == model_id:
@@ -96,7 +137,7 @@ def _get_model_config(model_id: str) -> dict[str, str]:
 async def upload_file_to_dashscope_oss(
     file_path: Path,
     api_key: str,
-    model_name: str = "aitryon"
+    model_name: str = "aitryon-plus"
 ) -> Optional[str]:
     """
     通过 DashScope 官方 getPolicy 租约接口，将本地图片文件直传至阿里云内部临时 OSS。
@@ -166,9 +207,8 @@ def _sanitize_garment_image(file_path: Path, category: str) -> Path:
     """
     针对虚拟试穿的单品图像预处理：
     若用户上传的是街拍或模特真人实拍照：
-    - 下装 (bottom)：若长宽比过高，裁剪掉顶部多余的上身衣物（如夹克、T恤下摆），防止上衣污染试穿结果；
+    - 下装 (bottom)：若长宽比过高，裁剪掉顶部多余的上身衣物，防止上衣污染试穿结果；
     - 上装 (top/coat)：若长宽比过高，裁剪掉底部多余的下装，防止下装色彩渗透。
-    返回处理后的临时图片路径（若无需处理则返回原图）。
     """
     try:
         from PIL import Image
@@ -178,7 +218,6 @@ def _sanitize_garment_image(file_path: Path, category: str) -> Path:
                 return file_path
             aspect = h / w
 
-            # 下装图片防上身污染：若为长人像图，裁切掉顶部 18%
             if category == "bottom" and aspect > 1.3:
                 cropped = img.crop((0, int(h * 0.18), w, int(h * 0.95)))
                 cache_dir = Path("uploads/temp_cleaned")
@@ -187,7 +226,6 @@ def _sanitize_garment_image(file_path: Path, category: str) -> Path:
                 cropped.save(clean_path, quality=95)
                 return clean_path
 
-            # 上装图片防下身污染：若为长人像图，裁切掉底部 20%
             elif category in ("top", "coat") and aspect > 1.4:
                 cropped = img.crop((0, 0, w, int(h * 0.82)))
                 cache_dir = Path("uploads/temp_cleaned")
@@ -207,20 +245,14 @@ async def _resolve_image_to_dashscope_url(
     api_key: str,
     category: str = ""
 ) -> Optional[str]:
-    """
-    将图片（可以是公网 URL，也可以是本地路径如 /uploads/...）转换为 DashScope 可解析的地址。
-    - 若为公网 http/https URL：直接返回
-    - 若为本地相对路径：调用 upload_file_to_dashscope_oss 转换为 oss:// 链接
-    """
+    """将图片本地路径或 URL 转换为 DashScope 可解析的地址。"""
     if not img_url_or_path:
         return None
 
-    # 如果已经是完整的远程公开图片，直接使用
     if img_url_or_path.startswith("http://") or img_url_or_path.startswith("https://"):
         if "127.0.0.1" not in img_url_or_path and "localhost" not in img_url_or_path:
             return img_url_or_path
 
-    # 本地文件路径解析
     clean_path = img_url_or_path
     if clean_path.startswith("http://127.0.0.1:8000/"):
         clean_path = clean_path.replace("http://127.0.0.1:8000/", "")
@@ -229,7 +261,6 @@ async def _resolve_image_to_dashscope_url(
 
     local_file = Path(clean_path)
     if not local_file.exists():
-        # 尝试相对于应用根目录定位
         alt_path = Path("apps/api") / clean_path
         if alt_path.exists():
             local_file = alt_path
@@ -242,6 +273,183 @@ async def _resolve_image_to_dashscope_url(
     return None
 
 
+# ── 引擎 1：通义千问超真实人像时尚大片 (Qwen-Image-Plus) ───────────────────────
+async def generate_qwen_fashion_lookbook(
+    outfit_id: str,
+    items: list[dict[str, Any]],
+    model_id: str = "male_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+) -> dict[str, Any]:
+    """
+    调用阿里通义千问生图旗舰大模型 (qwen-image-plus)。
+    结合穿搭单品属性、场景环境与选定模特特征，生成超真实人像时尚 Lookbook 大片。
+    """
+    save_dir = Path("uploads") / "tryon"
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    local_filename = f"{outfit_id}_{model_id}_qwen.png"
+    local_filepath = save_dir / local_filename
+    local_url = f"/uploads/tryon/{local_filename}"
+
+    if local_filepath.exists() and local_filepath.stat().st_size > 5000:
+        logger.info(f"命中 Qwen 生图缓存: {local_url}")
+        return {
+            "outfit_id": outfit_id,
+            "image_url": local_url,
+            "model_id": model_id,
+            "source": "qwen-image-plus",
+            "engine": "qwen",
+            "prompt": "qwen-image-plus fashion lookbook",
+        }
+
+    api_key = settings.AI_API_KEY
+    if not api_key:
+        return _error_result(outfit_id, model_id, "未配置 AI_API_KEY，请检查环境变量配置")
+
+    # 构建衣物描述与风格词
+    model_cfg = _get_model_config(model_id)
+    persona = model_cfg.get("persona", "attractive Asian model, realistic face, natural skin")
+    gender = model_cfg.get("gender", "unisex")
+
+    garment_descs = []
+    for it in items:
+        color = it.get("primary_color", "")
+        subcat = it.get("sub_category", "") or it.get("category", "")
+        mat = it.get("material", "")
+        desc = f"{color} {mat} {subcat}".strip()
+        if desc:
+            garment_descs.append(desc)
+
+    items_str = ", ".join(garment_descs) if garment_descs else "stylish modern outfit"
+
+    # 场景映射
+    scene_map = {
+        "commute": "modern urban office building backdrop, clean contemporary city architecture",
+        "date": "warm cozy lifestyle cafe, soft ambient bokeh, romantic relaxed atmosphere",
+        "sports": "dynamic outdoor sports venue or urban running park, energetic daylight",
+        "party": "chic modern celebration venue with subtle evening accent lighting",
+        "travel": "picturesque scenic travel destination, natural sunlight, cinematic view",
+        "daily": "clean minimalist city street, elegant understated urban background",
+    }
+    scene_desc = scene_map.get(scene, "tasteful minimalist studio backdrop with soft diffused lighting")
+
+    # 风格映射
+    style_map = {
+        "casual": "smart casual, relaxed elegance, comfortable modern cut",
+        "business": "tailored professional, crisp lines, sophisticated modern business",
+        "minimalist": "minimalist aesthetic, clean monochrome palette, pure understated luxury",
+        "streetwear": "contemporary street fashion, trendy silhouette, authentic urban cool",
+        "vintage": "retro modern chic, timeless appeal, subtle nostalgic warmth",
+        "sporty": "sporty athletic chic, functional ergonomic design",
+    }
+    style_desc = style_map.get(target_style, "refined contemporary fashion style")
+
+    prompt = (
+        f"High-end fashion studio lookbook portrait of an {persona}. "
+        f"The model is standing and wearing an outfit: {items_str}. "
+        f"Style tone: {style_desc}. Setting: {scene_desc}. "
+        f"Lighting & Photography: Soft directional key light, gentle natural fill, delicate shadows highlighting natural facial contours, "
+        f"ultra-realistic human skin texture with authentic subtle pores and healthy glow, lifelike eyes reflecting soft ambient light, "
+        f"natural lip and hair texture. Canon EOS R5 prime lens photography, 8k uhd, cinematic editorial quality, masterpiece photorealism."
+    )
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-DashScope-Async": "enable",
+    }
+
+    payload = {
+        "model": "qwen-image-plus",
+        "input": {"prompt": prompt},
+        "parameters": {
+            "size": "1024*1024",
+            "n": 1,
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            submit_resp = await client.post(
+                DASHSCOPE_T2I_URL,
+                headers=headers,
+                json=payload,
+            )
+
+            if submit_resp.status_code != 200:
+                err_text = submit_resp.text
+                logger.error(f"qwen-image-plus 提交失败 HTTP {submit_resp.status_code}: {err_text}")
+                # 尝试降级至 aitryon
+                logger.info("尝试自动降级至 aitryon 试衣引擎...")
+                return await generate_virtual_tryon(
+                    outfit_id=outfit_id,
+                    items=items,
+                    model_id=model_id,
+                    scene=scene,
+                    target_style=target_style,
+                )
+
+            task_id = submit_resp.json().get("output", {}).get("task_id")
+            if not task_id:
+                return _error_result(outfit_id, model_id, f"未能获取 task_id: {submit_resp.text[:120]}")
+
+            logger.info(f"Qwen 生图任务提交成功: task_id={task_id}")
+
+            generated_img_url: Optional[str] = None
+            poll_headers = {"Authorization": f"Bearer {api_key}"}
+
+            for i in range(25):
+                await asyncio.sleep(2.0)
+                poll_resp = await client.get(
+                    f"{DASHSCOPE_TASK_URL}/{task_id}",
+                    headers=poll_headers,
+                    timeout=10.0,
+                )
+                if poll_resp.status_code != 200:
+                    continue
+
+                poll_data = poll_resp.json()
+                task_status = poll_data.get("output", {}).get("task_status")
+
+                if task_status == "SUCCEEDED":
+                    results = poll_data.get("output", {}).get("results", [])
+                    if results and "url" in results[0]:
+                        generated_img_url = results[0]["url"]
+                    elif "image_url" in poll_data.get("output", {}):
+                        generated_img_url = poll_data.get("output", {}).get("image_url")
+                    break
+                elif task_status in ("FAILED", "CANCELED"):
+                    err_msg = poll_data.get("output", {}).get("message", "任务执行异常")
+                    logger.error(f"Qwen 生图任务失败: {err_msg}")
+                    return _error_result(outfit_id, model_id, f"Qwen 生图失败: {err_msg}")
+
+            if generated_img_url:
+                dl_resp = await client.get(generated_img_url, timeout=30.0)
+                if dl_resp.status_code == 200:
+                    local_filepath.write_bytes(dl_resp.content)
+                    logger.info(f"Qwen 时尚大片已保存至: {local_url}")
+                    return {
+                        "outfit_id": outfit_id,
+                        "image_url": local_url,
+                        "model_id": model_id,
+                        "source": "qwen-image-plus",
+                        "engine": "qwen",
+                        "prompt": prompt[:120] + "...",
+                    }
+                else:
+                    return _error_result(outfit_id, model_id, f"下载大片结果失败 (HTTP {dl_resp.status_code})")
+
+    except httpx.TimeoutException:
+        return _error_result(outfit_id, model_id, "Qwen 生图请求超时，请检查网络")
+    except Exception as e:
+        logger.error(f"Qwen 生图异常: {e}", exc_info=True)
+        return _error_result(outfit_id, model_id, f"生图服务异常: {str(e)}")
+
+    return _error_result(outfit_id, model_id, "Qwen 生图超时，请稍后重试")
+
+
+# ── 引擎 2：百炼高保真虚拟试衣 (OutfitAnyone aitryon-plus) ─────────────────────
 async def generate_virtual_tryon(
     outfit_id: str,
     items: list[dict[str, Any]],
@@ -250,29 +458,24 @@ async def generate_virtual_tryon(
     target_style: str = "casual",
 ) -> dict[str, Any]:
     """
-    调用阿里云百炼 OutfitAnyone (aitryon) 图像级虚拟试穿大模型。
-
-    流程：
-    1. 获取模特底图（本地模特直传 OSS 或官方标准图）
-    2. 将搭配中的上衣与下装本地图片自动上传至 DashScope 临时 OSS
-    3. 调用 aitryon 模型生成高精试衣效果
-    4. 轮询并下载最终效果图持久化至本地 uploads/tryon/
+    调用阿里云百炼 OutfitAnyone (aitryon-plus) 虚拟试穿大模型。
+    将搭配中的真实平铺图 1:1 迁移贴合到选定模特身上。
     """
     save_dir = Path("uploads") / "tryon"
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    local_filename = f"{outfit_id}_{model_id}.jpg"
+    local_filename = f"{outfit_id}_{model_id}_aitryon.jpg"
     local_filepath = save_dir / local_filename
     local_url = f"/uploads/tryon/{local_filename}"
 
-    # 本地缓存复用
     if local_filepath.exists() and local_filepath.stat().st_size > 5000:
-        logger.info(f"命中试穿缓存: {local_url}")
+        logger.info(f"命中 aitryon 试穿缓存: {local_url}")
         return {
             "outfit_id": outfit_id,
             "image_url": local_url,
             "model_id": model_id,
-            "source": "aitryon",
+            "source": "aitryon-plus",
+            "engine": "aitryon",
         }
 
     api_key = settings.AI_API_KEY
@@ -285,7 +488,7 @@ async def generate_virtual_tryon(
     person_image_url = None
 
     if local_model_path.exists():
-        person_image_url = await upload_file_to_dashscope_oss(local_model_path, api_key)
+        person_image_url = await upload_file_to_dashscope_oss(local_model_path, api_key, model_name="aitryon-plus")
 
     if not person_image_url:
         person_image_url = model_cfg.get("fallback_url")
@@ -305,14 +508,12 @@ async def generate_virtual_tryon(
         elif cat == "bottom" and not bottom_garment_url:
             bottom_garment_url = await _resolve_image_to_dashscope_url(img, api_key, category=cat)
 
-    # 必须至少有一件衣物
     if not top_garment_url and not bottom_garment_url:
         return _error_result(outfit_id, model_id, "搭配方案中无可识别的衣物图片，无法发起试穿")
 
-
     logger.info(
-        f"发起 OutfitAnyone 试穿: outfit={outfit_id}, model={model_id}, "
-        f"person={person_image_url[:40]}..., top={'有' if top_garment_url else '无'}, bottom={'有' if bottom_garment_url else '无'}"
+        f"发起 OutfitAnyone Plus 试穿: outfit={outfit_id}, model={model_id}, "
+        f"top={'有' if top_garment_url else '无'}, bottom={'有' if bottom_garment_url else '无'}"
     )
 
     headers = {
@@ -331,7 +532,7 @@ async def generate_virtual_tryon(
         input_payload["bottom_garment_url"] = bottom_garment_url
 
     payload = {
-        "model": "aitryon",
+        "model": "aitryon-plus",
         "input": input_payload,
         "parameters": {
             "resolution": -1,
@@ -340,7 +541,7 @@ async def generate_virtual_tryon(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             submit_resp = await client.post(
                 DASHSCOPE_SYNTHESIS_URL,
                 headers=headers,
@@ -349,23 +550,19 @@ async def generate_virtual_tryon(
 
             if submit_resp.status_code != 200:
                 err_text = submit_resp.text
-                logger.error(f"aitryon 任务提交失败 HTTP {submit_resp.status_code}: {err_text}")
-                return _error_result(
-                    outfit_id, model_id,
-                    f"试穿任务提交失败: {err_text[:120]}"
-                )
+                logger.error(f"aitryon-plus 提交失败 HTTP {submit_resp.status_code}: {err_text}")
+                return _error_result(outfit_id, model_id, f"试穿任务提交失败: {err_text[:120]}")
 
             task_id = submit_resp.json().get("output", {}).get("task_id")
             if not task_id:
                 return _error_result(outfit_id, model_id, f"未能获取试穿 task_id: {submit_resp.text[:120]}")
 
-            logger.info(f"aitryon 试衣任务已提交成功: task_id={task_id}")
+            logger.info(f"aitryon-plus 试衣任务已提交: task_id={task_id}")
 
-            # 轮询任务状态（aitryon 通常 5~15 秒完成，每 2.5 秒查询一次，最多等 50 秒）
             poll_headers = {"Authorization": f"Bearer {api_key}"}
             generated_img_url: Optional[str] = None
 
-            for i in range(20):
+            for i in range(25):
                 await asyncio.sleep(2.5)
                 poll_resp = await client.get(
                     f"{DASHSCOPE_TASK_URL}/{task_id}",
@@ -383,20 +580,20 @@ async def generate_virtual_tryon(
                     break
                 elif task_status in ("FAILED", "CANCELED"):
                     err_msg = poll_data.get("output", {}).get("message", "生成任务失败")
-                    logger.error(f"aitryon 任务失败: {err_msg}")
+                    logger.error(f"aitryon-plus 任务失败: {err_msg}")
                     return _error_result(outfit_id, model_id, f"试衣生成失败: {err_msg}")
 
             if generated_img_url:
-                # 下载结果图片并持久化至本地
                 dl_resp = await client.get(generated_img_url, timeout=30.0)
                 if dl_resp.status_code == 200:
                     local_filepath.write_bytes(dl_resp.content)
-                    logger.info(f"虚拟试穿效果图已保存至: {local_url}")
+                    logger.info(f"aitryon-plus 试穿效果图已保存至: {local_url}")
                     return {
                         "outfit_id": outfit_id,
                         "image_url": local_url,
                         "model_id": model_id,
-                        "source": "aitryon",
+                        "source": "aitryon-plus",
+                        "engine": "aitryon",
                     }
                 else:
                     return _error_result(outfit_id, model_id, f"结果图拉取失败 (HTTP {dl_resp.status_code})")
@@ -407,7 +604,7 @@ async def generate_virtual_tryon(
         logger.error(f"虚拟试穿执行异常: {e}", exc_info=True)
         return _error_result(outfit_id, model_id, f"虚拟试穿服务异常: {str(e)}")
 
-    return _error_result(outfit_id, model_id, "试穿生成超时（已超 50 秒），请稍后重试")
+    return _error_result(outfit_id, model_id, "试穿生成超时，请稍后重试")
 
 
 def _error_result(outfit_id: str, model_id: str, error: str) -> dict[str, Any]:
@@ -417,29 +614,45 @@ def _error_result(outfit_id: str, model_id: str, error: str) -> dict[str, Any]:
         "image_url": "",
         "model_id": model_id,
         "source": "error",
+        "engine": "unknown",
         "error": error,
     }
 
 
-# ── 向后兼容包装 ────────────────────────────────────────────────────────────
+# ── 综合统一调度接口 ────────────────────────────────────────────────────────
 async def generate_tryon_image(
     outfit_id: str,
     items: list[dict[str, Any]],
     gender: str = "unisex",
     scene: str = "daily",
     target_style: str = "casual",
-    model_id: str = "female_1",
+    model_id: str = "male_1",
+    engine: str = "qwen",
 ) -> dict[str, Any]:
-    """向后兼容接口。"""
+    """
+    生图/试衣统一入口。
+    - engine="qwen": 阿里通义千问超真实人像时尚写真（默认推荐，真实人脸、光影景深、高颜值）
+    - engine="aitryon": 阿里百炼 OutfitAnyone Plus 1:1 像素级虚拟试穿
+    """
     if gender == "male" and model_id == "female_1":
         model_id = "male_1"
 
-    result = await generate_virtual_tryon(
-        outfit_id=outfit_id,
-        items=items,
-        model_id=model_id,
-        scene=scene,
-        target_style=target_style,
-    )
-    result.setdefault("prompt", "aitryon outfitanyone")
+    if engine == "aitryon":
+        result = await generate_virtual_tryon(
+            outfit_id=outfit_id,
+            items=items,
+            model_id=model_id,
+            scene=scene,
+            target_style=target_style,
+        )
+    else:
+        result = await generate_qwen_fashion_lookbook(
+            outfit_id=outfit_id,
+            items=items,
+            model_id=model_id,
+            scene=scene,
+            target_style=target_style,
+        )
+
+    result.setdefault("prompt", f"{engine} fashion generation")
     return result

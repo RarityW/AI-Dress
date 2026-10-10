@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -72,11 +73,11 @@ def get_current_user(
     if payload is None:
         raise credentials_exception
 
-    username: str = payload.get("sub")
-    if username is None:
+    sub: str = payload.get("sub")
+    if sub is None:
         raise credentials_exception
 
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter(or_(User.account == sub, User.username == sub)).first()
     if user is None:
         raise credentials_exception
 
@@ -94,17 +95,18 @@ def get_current_user_optional(
     if credentials is not None:
         payload = decode_access_token(credentials.credentials)
         if payload is not None:
-            username = payload.get("sub")
-            if username:
-                user = db.query(User).filter(User.username == username).first()
+            sub = payload.get("sub")
+            if sub:
+                user = db.query(User).filter(or_(User.account == sub, User.username == sub)).first()
                 if user:
                     return user
 
     # 降级到默认用户
-    default = db.query(User).filter(User.username == "default_user").first()
+    default = db.query(User).filter(or_(User.account == "default_user", User.username == "default_user")).first()
     if not default:
         default = User(
-            username="default_user",
+            account="default_user",
+            username="默认用户",
             email="default@yijian.ai",
             hashed_password="not-a-real-password",
         )

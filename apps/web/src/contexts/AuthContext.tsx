@@ -7,8 +7,8 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  login: (account: string, password: string) => Promise<void>;
+  register: (account: string, email: string, password: string, username?: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -43,8 +43,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
-  const login = async (username: string, password: string) => {
-    const res = await authApi.login({ username, password });
+  const login = async (account: string, password: string) => {
+    const res = await authApi.login({ account, password });
     if (res.success && res.data?.access_token) {
       const newToken = res.data.access_token;
       localStorage.setItem('yijian_token', newToken);
@@ -59,8 +59,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (username: string, email: string, password: string) => {
-    const res = await authApi.register({ username, email, password });
+  const register = async (account: string, email: string, password: string, username?: string) => {
+    const res = await authApi.register({ account, email, password, username });
     if (res.success && res.data?.access_token) {
       const newToken = res.data.access_token;
       localStorage.setItem('yijian_token', newToken);

@@ -32,14 +32,23 @@ def register(
     db: Session = Depends(get_db),
 ):
     """
-    用户注册：创建用户、哈希密码、初始化默认偏好并直接签发 JWT 访问令牌。
+    用户注册：创建用户专属账号、哈希密码、绑定个人昵称并签发 JWT 访问令牌。
+    专属账号 (account) 与密码直接关联用于鉴权，用户名 (username) 仅用作展示。
     """
-    # 校验用户名是否已存在
-    existing_user = db.query(User).filter(User.username == request.username).first()
-    if existing_user:
+    account = (request.account or request.username or "").strip()
+    if not account:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content=error_response(code=400, message="用户名已存在").model_dump(),
+            content=error_response(code=400, message="登录账号不能为空").model_dump(),
+        )
+    username = (request.username or account).strip()
+
+    # 校验账号是否已存在（账号为全局唯一登录凭证）
+    existing_account = db.query(User).filter(User.account == account).first()
+    if existing_account:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_response(code=400, message="该账号已存在，请更换账号").model_dump(),
         )
 
     # 校验邮箱是否已存在
@@ -52,7 +61,8 @@ def register(
 
     # 创建新用户
     new_user = User(
-        username=request.username,
+        account=account,
+        username=username,
         email=request.email,
         hashed_password=hash_password(request.password),
     )
@@ -71,7 +81,7 @@ def register(
     db.commit()
 
     # 签发 JWT
-    access_token = create_access_token(data={"sub": new_user.username})
+    access_token = create_access_token(data={"sub": new_user.account})
     return success_response(
         data=TokenResponse(access_token=access_token, token_type="bearer"),
         message="注册成功",
@@ -84,11 +94,17 @@ def login(
     db: Session = Depends(get_db),
 ):
     """
-    用户登录：支持使用用户名或注册邮箱登录，校验密码并签发 JWT 访问令牌。
+    用户登录：使用账号 (account) 或注册邮箱与密码鉴权，用户名不用作登录账号。
     """
-    account = request.username.strip()
+    login_account = (request.account or request.username or "").strip()
+    if not login_account:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=error_response(code=400, message="请输入登录账号或邮箱").model_dump(),
+        )
+
     user = db.query(User).filter(
-        or_(User.username == account, User.email == account)
+        or_(User.account == login_account, User.email == login_account)
     ).first()
     if not user or not verify_password(request.password, user.hashed_password):
         return JSONResponse(
@@ -96,7 +112,7 @@ def login(
             content=error_response(code=401, message="账号或密码错误").model_dump(),
         )
 
-    access_token = create_access_token(data={"sub": user.username})
+    access_token = create_access_token(data={"sub": user.account})
     return success_response(
         data=TokenResponse(access_token=access_token, token_type="bearer"),
         message="登录成功",
@@ -113,6 +129,7 @@ def get_me(
     return success_response(
         data=UserInfoResponse(
             id=str(current_user.id),
+            account=current_user.account or current_user.username,
             username=current_user.username,
             email=current_user.email,
             created_at=current_user.created_at,

@@ -113,10 +113,10 @@ export const generateTryOn = (params: TryOnRequest): Promise<ApiResponse<TryOnRe
 
 // --- 用户认证 API ---
 export const authApi = {
-  register: (data: { username: string; email: string; password: string }): Promise<ApiResponse<TokenResponse>> => {
+  register: (data: { account: string; email: string; password: string; username?: string }): Promise<ApiResponse<TokenResponse>> => {
     return api.post('/api/v1/auth/register', data);
   },
-  login: (data: { username: string; password: string }): Promise<ApiResponse<TokenResponse>> => {
+  login: (data: { account: string; password: string }): Promise<ApiResponse<TokenResponse>> => {
     return api.post('/api/v1/auth/login', data);
   },
   getMe: (): Promise<ApiResponse<User>> => {

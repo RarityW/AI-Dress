@@ -86,8 +86,8 @@ export default function ClothingDetailPage() {
   if (loading) {
     return (
       <div className="py-32 text-center space-y-3">
-        <LoadingSpinner />
-        <p className="text-sm text-slate-500 font-medium animate-pulse">正在加载单品档案...</p>
+        <LoadingSpinner label="正在加载单品档案…" />
+        <p className="text-sm text-slate-500 font-medium animate-pulse">正在加载单品档案…</p>
       </div>
     );
   }
@@ -95,7 +95,7 @@ export default function ClothingDetailPage() {
   if (error || !item) {
     return (
       <div className="max-w-md mx-auto py-24 text-center space-y-4">
-        <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto" aria-hidden="true" />
         <h3 className="text-lg font-bold text-slate-900">未找到该单品档案</h3>
         <p className="text-xs text-slate-500">{error || '该衣物可能已被删除或不存在。'}</p>
         <Link
@@ -116,20 +116,23 @@ export default function ClothingDetailPage() {
       {/* 顶部面包屑与操作栏 */}
       <div className="flex items-center justify-between border-b border-slate-200/80 pb-4">
         <button
+          type="button"
           onClick={() => navigate('/wardrobe')}
           className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           <span>返回衣橱列表</span>
         </button>
 
         <button
+          type="button"
           onClick={handleDelete}
           disabled={deleting}
+          aria-busy={deleting}
           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors disabled:opacity-40 cursor-pointer"
         >
-          <Trash2 className="w-3.5 h-3.5" />
-          <span>{deleting ? '正在删除...' : '删除单品'}</span>
+          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+          <span>{deleting ? '正在删除…' : '删除单品'}</span>
         </button>
       </div>
 
@@ -141,6 +144,8 @@ export default function ClothingDetailPage() {
             <img
               src={item.image_url}
               alt={item.sub_category}
+              loading="eager"
+              decoding="async"
               className="max-h-96 w-auto object-contain rounded-2xl shadow-md"
             />
           ) : (

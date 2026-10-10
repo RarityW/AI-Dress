@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 export default function NotFoundPage() {
   return (
     <div className="min-h-[60vh] flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8">
-      <div className="text-center">
-        <h1 className="text-9xl font-extrabold text-brand-600">404</h1>
-        <p className="mt-2 text-2xl font-bold text-gray-900 tracking-tight sm:text-3xl">页面未找到</p>
-        <p className="mt-4 text-base text-gray-500">抱歉，我们找不到您要访问的页面。</p>
-        <div className="mt-10">
-          <Link to="/" className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500">
-            返回首页
+      <div className="text-center max-w-md mx-auto space-y-4">
+        <h1 className="text-8xl sm:text-9xl font-black text-brand-600 tracking-tight tabular-nums">404</h1>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">页面未找到</h2>
+        <p className="text-sm text-slate-500 text-pretty">抱歉，我们找不到您要访问的页面。该页面可能已被移动或链接已失效。</p>
+        <div className="pt-4">
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center px-6 py-3 rounded-xl text-sm font-semibold text-white bg-slate-900 hover:bg-brand-600 shadow-md shadow-slate-900/10 active:scale-95 transition-all"
+          >
+            返回系统首页
           </Link>
         </div>
       </div>

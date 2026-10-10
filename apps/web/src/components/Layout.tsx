@@ -39,12 +39,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden">
+      {/* 键盘无障碍跳跃至主要内容 (Skip Link) */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2.5 focus:bg-slate-900 focus:text-white focus:rounded-xl focus:shadow-2xl focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 text-xs font-bold"
+      >
+        跳至主要内容 (Skip to main content)
+      </a>
+
       {/* 顶部环境光晕点缀 (Ambient Glow) */}
-      <div className="fixed top-0 left-1/4 w-96 h-96 bg-brand-200/30 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse-subtle" />
-      <div className="fixed top-32 right-1/4 w-80 h-80 bg-atelier-300/30 rounded-full blur-3xl pointer-events-none -z-10" />
+      <div
+        aria-hidden="true"
+        className="fixed top-0 left-1/4 w-96 h-96 bg-brand-200/30 rounded-full blur-3xl pointer-events-none -z-10 animate-pulse-subtle motion-reduce:animate-none"
+      />
+      <div
+        aria-hidden="true"
+        className="fixed top-32 right-1/4 w-80 h-80 bg-atelier-300/30 rounded-full blur-3xl pointer-events-none -z-10"
+      />
 
       {/* 悬浮磨砂顶栏 Header */}
-      <header className="sticky top-0 z-40 w-full glass-card border-b border-slate-200/70 transition-all">
+      <header className="sticky top-0 z-40 w-full glass-card border-b border-slate-200/70 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20">
             {/* 品牌标识 Logo */}
@@ -124,8 +138,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     }}
                     className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
                     title="退出登录"
+                    aria-label="退出登录"
                   >
-                    <LogOut className="w-4 h-4 shrink-0" />
+                    <LogOut className="w-4 h-4 shrink-0" aria-hidden="true" />
                   </button>
                 </div>
               ) : (
@@ -133,7 +148,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   to="/login"
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-brand-600 shadow-sm transition-all duration-200 active:scale-95 whitespace-nowrap shrink-0"
                 >
-                  <LogIn className="w-3.5 h-3.5 shrink-0" />
+                  <LogIn className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   <span className="whitespace-nowrap">登录 / 注册</span>
                 </Link>
               )}
@@ -145,9 +160,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 type="button"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                aria-label="切换菜单"
+                aria-label={mobileMenuOpen ? '关闭导航菜单' : '打开导航菜单'}
+                aria-expanded={mobileMenuOpen}
               >
-                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                {mobileMenuOpen ? <X className="w-6 h-6" aria-hidden="true" /> : <Menu className="w-6 h-6" aria-hidden="true" />}
               </button>
             </div>
           </div>
@@ -215,7 +231,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* 页面主视图 */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <main id="main-content" className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         {children}
       </main>
 

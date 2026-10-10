@@ -220,7 +220,7 @@ export default function WardrobePage() {
       {/* 筛选与搜索工具条 */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-soft flex flex-col md:flex-row items-center justify-between gap-4">
         {/* 类别胶囊选项卡 */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+        <div role="tablist" aria-label="衣物分类切换" className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
           {CATEGORIES.map((cat) => {
             const isActive = activeCategory === cat.value;
             const count = cat.value ? categoryCounts[cat.value] || 0 : categoryCounts.total;
@@ -228,8 +228,10 @@ export default function WardrobePage() {
               <button
                 key={cat.value}
                 type="button"
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => setActiveCategory(cat.value)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5 cursor-pointer ${
                   isActive
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -238,7 +240,7 @@ export default function WardrobePage() {
                 <span>{cat.label}</span>
                 {count !== undefined && (
                   <span
-                    className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
+                    className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono tabular-nums ${
                       isActive ? 'bg-white/20 text-white' : 'bg-slate-200/60 text-slate-600'
                     }`}
                   >
@@ -252,13 +254,14 @@ export default function WardrobePage() {
 
         {/* 搜索框 */}
         <div className="relative w-full md:w-64">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <input
-            type="text"
-            placeholder="搜索款式、颜色或风格..."
+            type="search"
+            aria-label="搜索衣橱单品"
+            placeholder="搜索款式、颜色或风格…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-all bg-slate-50/50"
+            className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors bg-slate-50/50"
           />
         </div>
       </div>
@@ -266,9 +269,9 @@ export default function WardrobePage() {
       {/* 主展示区 */}
       {loading ? (
         <div className="py-24 text-center space-y-3">
-          <LoadingSpinner />
+          <LoadingSpinner label="正在加载数字衣橱单品库…" />
           <p className="text-sm text-slate-500 font-medium animate-pulse">
-            正在加载数字衣橱单品库...
+            正在加载数字衣橱单品库…
           </p>
         </div>
       ) : error ? (
@@ -331,8 +334,17 @@ export default function WardrobePage() {
             return (
               <div
                 key={item.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`查看 ${item.sub_category} 详情`}
                 onClick={() => navigate(`/wardrobe/${item.id}`)}
-                className="group bg-white rounded-2xl border border-slate-200/80 shadow-soft overflow-hidden card-interactive cursor-pointer flex flex-col"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/wardrobe/${item.id}`);
+                  }
+                }}
+                className="group bg-white rounded-2xl border border-slate-200/80 shadow-soft overflow-hidden card-interactive cursor-pointer flex flex-col focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none"
               >
                 {/* 图片封面 */}
                 <div className="aspect-[4/5] bg-slate-100 relative overflow-hidden flex items-center justify-center">
@@ -340,10 +352,12 @@ export default function WardrobePage() {
                     <img
                       src={item.image_url}
                       alt={item.sub_category}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 motion-reduce:transition-none"
                     />
                   ) : (
-                    <div className="text-5xl opacity-40 group-hover:scale-110 transition-transform">
+                    <div className="text-5xl opacity-40 group-hover:scale-110 transition-transform motion-reduce:transition-none">
                       {icon}
                     </div>
                   )}
@@ -356,7 +370,7 @@ export default function WardrobePage() {
                   {/* 悬停快捷提示条 */}
                   <div className="absolute inset-x-0 bottom-0 py-2 px-3 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between text-white text-xs">
                     <span>查看单品详情</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
                   </div>
                 </div>
 
@@ -369,7 +383,7 @@ export default function WardrobePage() {
                       </h3>
                       {/* 颜色圆点 */}
                       <div className="flex items-center gap-1 shrink-0 pt-0.5" title={`主色调: ${item.primary_color}`}>
-                        <span className="w-3 h-3 rounded-full border border-slate-300 shadow-xs" style={{ backgroundColor: item.primary_color }} />
+                        <span className="w-3 h-3 rounded-full border border-slate-300 shadow-xs" style={{ backgroundColor: item.primary_color }} aria-hidden="true" />
                         <span className="text-[11px] text-slate-400 capitalize">{item.primary_color}</span>
                       </div>
                     </div>
@@ -388,9 +402,9 @@ export default function WardrobePage() {
                   </div>
 
                   {/* 底部温区信息 */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 tabular-nums">
                     <span className="flex items-center gap-1">
-                      <Thermometer className="w-3 h-3 text-amber-500" />
+                      <Thermometer className="w-3 h-3 text-amber-500" aria-hidden="true" />
                       <span>{item.temp_min}℃ ~ {item.temp_max}℃</span>
                     </span>
                     <span className="text-slate-400 capitalize">{item.thickness}</span>

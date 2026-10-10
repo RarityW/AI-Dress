@@ -305,6 +305,7 @@ export default function UploadPage() {
           >
             <input
               type="file"
+              aria-label="选择或拖拽衣物照片文件"
               accept="image/jpeg,image/png,image/webp"
               onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -315,6 +316,8 @@ export default function UploadPage() {
                 <img
                   src={preview}
                   alt="照片预览"
+                  loading="eager"
+                  decoding="async"
                   className="max-h-72 w-auto object-contain rounded-xl shadow-md mx-auto"
                 />
                 <p className="text-xs text-slate-500">点击或重新拖拽可更换照片</p>
@@ -322,7 +325,7 @@ export default function UploadPage() {
             ) : (
               <div className="space-y-3">
                 <div className="w-14 h-14 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-slate-400 mx-auto">
-                  <UploadIcon className="w-7 h-7 text-brand-600" />
+                  <UploadIcon className="w-7 h-7 text-brand-600" aria-hidden="true" />
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-slate-800">
@@ -344,7 +347,7 @@ export default function UploadPage() {
                 // 如果用户不想上传真实照片，支持直接跳到步骤 2
                 setStep(2);
               }}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-800 underline"
+              className="text-xs font-semibold text-slate-500 hover:text-slate-800 underline cursor-pointer"
             >
               暂不上传照片，直接手动录入属性 →
             </button>
@@ -357,14 +360,14 @@ export default function UploadPage() {
             >
               {uploading || analyzing ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>{analyzing ? 'AI 多模态智能识别中...' : '正在上传照片...'}</span>
+                  <RefreshCw className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  <span>{analyzing ? 'AI 多模态智能识别中…' : '正在上传照片…'}</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <Sparkles className="w-4 h-4 text-amber-300" aria-hidden="true" />
                   <span>上传照片并一键 AI 识别</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </>
               )}
             </button>
@@ -526,8 +529,9 @@ export default function UploadPage() {
                     <button
                       key={opt.value}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => toggleSeason(opt.value)}
-                      className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${
+                      className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
                         active
                           ? 'border-brand-600 bg-brand-50 text-brand-700 font-bold ring-1 ring-brand-500'
                           : 'border-slate-200 text-slate-600 bg-white hover:border-slate-300'

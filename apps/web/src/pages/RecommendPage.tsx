@@ -173,6 +173,17 @@ export default function RecommendPage() {
   const [modelGenderFilter, setModelGenderFilter] = useState<'all' | 'female' | 'male'>('all');
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  // 监听 Escape 键快速关闭大图预览模态框
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && previewImageUrl) {
+        setPreviewImageUrl(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewImageUrl]);
+
   // 加载预设模特列表
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -544,8 +555,9 @@ export default function RecommendPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
+                  aria-pressed={selectedEngine === 'qwen'}
                   onClick={() => setSelectedEngine('qwen')}
-                  className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                  className={`p-3.5 rounded-2xl border-2 text-left transition-colors cursor-pointer ${
                     selectedEngine === 'qwen'
                       ? 'border-purple-600 bg-purple-50/50 shadow-sm ring-1 ring-purple-300'
                       : 'border-gray-200 bg-white hover:border-gray-300'
@@ -553,7 +565,7 @@ export default function RecommendPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <span>🌟</span>
+                      <span aria-hidden="true">🌟</span>
                       <span>阿里 Qwen 真实人像大片</span>
                     </span>
                     <span className="text-[10px] font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-2 py-0.5 rounded-full">
@@ -567,8 +579,9 @@ export default function RecommendPage() {
 
                 <button
                   type="button"
+                  aria-pressed={selectedEngine === 'aitryon'}
                   onClick={() => setSelectedEngine('aitryon')}
-                  className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer ${
+                  className={`p-3.5 rounded-2xl border-2 text-left transition-colors cursor-pointer ${
                     selectedEngine === 'aitryon'
                       ? 'border-purple-600 bg-purple-50/50 shadow-sm ring-1 ring-purple-300'
                       : 'border-gray-200 bg-white hover:border-gray-300'
@@ -576,7 +589,7 @@ export default function RecommendPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <span>👗</span>
+                      <span aria-hidden="true">👗</span>
                       <span>OutfitAnyone Plus 1:1 像素试衣</span>
                     </span>
                     <span className="text-[10px] font-medium text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
@@ -594,15 +607,17 @@ export default function RecommendPage() {
             <div className="space-y-2.5">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <Camera className="h-4 w-4 text-purple-600" />
+                  <Camera className="h-4 w-4 text-purple-600" aria-hidden="true" />
                   <span className="text-sm font-semibold text-gray-800">选择出镜模特</span>
                 </div>
                 {/* 性别筛选 */}
-                <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg text-xs">
+                <div role="tablist" aria-label="模特性别筛选" className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg text-xs">
                   <button
                     type="button"
+                    role="tab"
+                    aria-selected={modelGenderFilter === 'all'}
                     onClick={() => setModelGenderFilter('all')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                       modelGenderFilter === 'all' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -610,8 +625,10 @@ export default function RecommendPage() {
                   </button>
                   <button
                     type="button"
+                    role="tab"
+                    aria-selected={modelGenderFilter === 'female'}
                     onClick={() => setModelGenderFilter('female')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                       modelGenderFilter === 'female' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -619,8 +636,10 @@ export default function RecommendPage() {
                   </button>
                   <button
                     type="button"
+                    role="tab"
+                    aria-selected={modelGenderFilter === 'male'}
                     onClick={() => setModelGenderFilter('male')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                    className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
                       modelGenderFilter === 'male' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
@@ -635,8 +654,10 @@ export default function RecommendPage() {
                   <button
                     key={model.id}
                     type="button"
+                    aria-pressed={selectedModelId === model.id}
+                    aria-label={`选择出镜模特: ${model.label}`}
                     onClick={() => setSelectedModelId(model.id)}
-                    className={`relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer aspect-[3/4] group ${
+                    className={`relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer aspect-[3/4] group focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none ${
                       selectedModelId === model.id
                         ? 'border-purple-600 ring-2 ring-purple-300 ring-offset-1 shadow-md'
                         : 'border-gray-200 hover:border-purple-300'
@@ -645,7 +666,9 @@ export default function RecommendPage() {
                     <img
                       src={model.thumbnail}
                       alt={model.label}
-                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300 motion-reduce:transition-none"
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-6 pb-2 px-2">
                       <div className="text-white text-[11px] font-bold text-center leading-tight truncate">
@@ -654,7 +677,7 @@ export default function RecommendPage() {
                     </div>
                     {selectedModelId === model.id && (
                       <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center shadow">
-                        <Check className="w-3 h-3 text-white" />
+                        <Check className="w-3 h-3 text-white" aria-hidden="true" />
                       </div>
                     )}
                   </button>
@@ -1046,19 +1069,20 @@ export default function RecommendPage() {
                   <div className="text-sm font-semibold text-gray-700">
                     对本次推荐满意吗？请给出您的打分：
                   </div>
-                  <div className="flex justify-center gap-2">
+                  <div role="group" aria-label="推荐满意度评价" className="flex justify-center gap-2">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <button
                         key={star}
                         type="button"
                         onClick={() => handleRate(star)}
+                        aria-label={`打分 ${star} 星`}
                         className={`p-1.5 rounded-lg transition-transform hover:scale-110 cursor-pointer ${
                           feedbackRating && feedbackRating >= star
                             ? 'text-amber-400'
                             : 'text-gray-300 hover:text-amber-300'
                         }`}
                       >
-                        <Star className="h-6 w-6 fill-current" />
+                        <Star className="h-6 w-6 fill-current" aria-hidden="true" />
                       </button>
                     ))}
                   </div>
@@ -1077,6 +1101,9 @@ export default function RecommendPage() {
       {/* 高清图片大图预览弹窗 (Lightbox Modal) */}
       {previewImageUrl && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="AI 穿搭高清效果原图预览"
           onClick={() => setPreviewImageUrl(null)}
           className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn cursor-zoom-out"
         >
@@ -1086,7 +1113,7 @@ export default function RecommendPage() {
           >
             <div className="flex items-center justify-between px-6 py-4 bg-slate-800/80 border-b border-slate-700/80">
               <div className="flex items-center gap-2 text-white text-sm font-bold">
-                <Sparkles className="w-4 h-4 text-purple-400" />
+                <Sparkles className="w-4 h-4 text-purple-400" aria-hidden="true" />
                 <span>AI 穿搭高清效果原图</span>
               </div>
               <div className="flex items-center gap-2">
@@ -1097,22 +1124,25 @@ export default function RecommendPage() {
                   rel="noopener noreferrer"
                   className="p-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>下载原图</span>
                 </a>
                 <button
                   type="button"
                   onClick={() => setPreviewImageUrl(null)}
+                  aria-label="关闭原图预览"
                   className="p-2 rounded-xl bg-slate-700 hover:bg-red-500/80 text-white transition-colors cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4" aria-hidden="true" />
                 </button>
               </div>
             </div>
             <div className="p-4 flex items-center justify-center bg-black/40">
               <img
                 src={previewImageUrl}
-                alt="高清预览大图"
+                alt="AI 穿搭高清效果原图大图"
+                loading="eager"
+                decoding="async"
                 className="max-h-[75vh] w-auto rounded-2xl object-contain shadow-xl"
               />
             </div>

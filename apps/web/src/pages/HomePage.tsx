@@ -17,12 +17,12 @@ export default function HomePage() {
       <section className="relative pt-6 sm:pt-12 text-center max-w-4xl mx-auto space-y-6">
 
         {/* 主标与副标 */}
-        <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-[1.15]">
+        <h1 className="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight leading-[1.15] text-balance">
           让每一件衣物，<br className="hidden sm:inline" />
           都有<span className="bg-clip-text text-transparent bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600">被看见的美好</span>。
         </h1>
 
-        <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
+        <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed text-pretty">
           告别每日穿搭选择困难。采用多模态视觉大模型提取服装标准化属性，依托自主研发的
           <strong className="text-slate-900 font-semibold">“气温 × 风格 × 场景 × 色彩”</strong>
           多因素运筹评分引擎，秒级输出最懂你的个性化 TOP-K 搭配方案。
@@ -34,16 +34,16 @@ export default function HomePage() {
             to="/recommend"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl text-sm sm:text-base font-semibold text-white bg-slate-900 hover:bg-brand-600 shadow-lg shadow-slate-900/15 transition-all duration-200 active:scale-95 group"
           >
-            <Compass className="w-5 h-5 group-hover:rotate-45 transition-transform" />
+            <Compass className="w-5 h-5 group-hover:rotate-45 transition-transform motion-reduce:group-hover:rotate-0" aria-hidden="true" />
             <span>智能生成今日穿搭</span>
-            <ArrowRight className="w-4 h-4 ml-0.5 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight className="w-4 h-4 ml-0.5 group-hover:translate-x-1 transition-transform motion-reduce:group-hover:translate-x-0" aria-hidden="true" />
           </Link>
 
           <Link
             to="/wardrobe"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm sm:text-base font-semibold text-slate-700 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 shadow-sm transition-all duration-200"
           >
-            <Shirt className="w-5 h-5 text-slate-500" />
+            <Shirt className="w-5 h-5 text-slate-500" aria-hidden="true" />
             <span>浏览数字衣橱</span>
           </Link>
         </div>
@@ -51,19 +51,19 @@ export default function HomePage() {
         {/* 核心指标微数据条 (Stats Bar) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-8 max-w-3xl mx-auto">
           <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-soft text-center">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900">4-Factor</div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums">4-Factor</div>
             <div className="text-xs text-slate-500 font-medium mt-1">多维度加权运筹决策</div>
           </div>
           <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-soft text-center">
-            <div className="text-2xl sm:text-3xl font-black text-brand-600">100%</div>
+            <div className="text-2xl sm:text-3xl font-black text-brand-600 tabular-nums">100%</div>
             <div className="text-xs text-slate-500 font-medium mt-1">核心决策算法纯自研</div>
           </div>
           <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-soft text-center">
-            <div className="text-2xl sm:text-3xl font-black text-slate-900">TOP-3</div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums">TOP-3</div>
             <div className="text-xs text-slate-500 font-medium mt-1">最优方案与理由输出</div>
           </div>
           <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-soft text-center">
-            <div className="text-2xl sm:text-3xl font-black text-emerald-600">&lt; 0.3s</div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-600 tabular-nums">&lt; 0.3s</div>
             <div className="text-xs text-slate-500 font-medium mt-1">全链路高速运筹响应</div>
           </div>
         </div>

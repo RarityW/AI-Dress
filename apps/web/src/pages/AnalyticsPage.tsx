@@ -74,8 +74,8 @@ export default function AnalyticsPage() {
   if (loading) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center space-y-4">
-        <LoadingSpinner />
-        <p className="text-slate-600 font-medium text-sm">正在计算衣橱数据与资产诊断...</p>
+        <LoadingSpinner label="正在计算衣橱数据与资产诊断…" />
+        <p className="text-slate-600 font-medium text-sm">正在计算衣橱数据与资产诊断…</p>
       </div>
     );
   }
@@ -177,7 +177,13 @@ export default function AnalyticsPage() {
 
     return (
       <div className="relative flex items-center justify-center">
-        <svg width={size} height={size} className="transform -rotate-90">
+        <svg
+          role="img"
+          aria-label="衣橱品类资产构成环形图"
+          width={size}
+          height={size}
+          className="transform -rotate-90"
+        >
           <circle
             cx={size / 2}
             cy={size / 2}
@@ -205,13 +211,13 @@ export default function AnalyticsPage() {
                 strokeDashoffset={strokeDashoffset}
                 strokeLinecap="round"
                 transform={`rotate(${rotateAngle} ${size / 2} ${size / 2})`}
-                className="transition-all duration-700 ease-out hover:opacity-85"
+                className="transition-all duration-700 ease-out hover:opacity-85 motion-reduce:transition-none"
               />
             );
           })}
         </svg>
         <div className="absolute flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-3xl font-black text-slate-900 tracking-tight">
+          <span className="text-3xl font-black text-slate-900 tracking-tight tabular-nums">
             {metrics.total_items}
           </span>
           <span className="text-xs font-semibold text-slate-500">总单品数</span>

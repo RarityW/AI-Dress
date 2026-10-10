@@ -73,13 +73,13 @@ export default function FavoritesPage() {
       {/* 列表主体 */}
       {loading ? (
         <div className="min-h-[40vh] flex flex-col items-center justify-center">
-          <div className="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-slate-500 mt-3">加载收藏搭配中...</span>
+          <div className="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin motion-reduce:animate-none" />
+          <span className="text-sm text-slate-500 mt-3">加载收藏搭配中…</span>
         </div>
       ) : outfits.length === 0 ? (
         <div className="text-center py-16 px-4 glass-card rounded-3xl border border-dashed border-slate-300">
           <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
-            <Bookmark className="w-8 h-8" />
+            <Bookmark className="w-8 h-8" aria-hidden="true" />
           </div>
           <h3 className="text-lg font-bold text-slate-800">暂无收藏的穿搭方案</h3>
           <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto mt-1 mb-6">
@@ -90,7 +90,7 @@ export default function FavoritesPage() {
             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-brand-600 transition-colors"
           >
             <span>立即体验穿搭推荐</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </Link>
         </div>
       ) : (
@@ -110,8 +110,8 @@ export default function FavoritesPage() {
                     <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
                       {outfit.created_at && (
                         <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(outfit.created_at).toLocaleDateString('zh-CN')}
+                          <Calendar className="w-3 h-3" aria-hidden="true" />
+                          <span>{new Date(outfit.created_at).toLocaleDateString('zh-CN')}</span>
                         </span>
                       )}
                       {outfit.occasion && (
@@ -128,11 +128,12 @@ export default function FavoritesPage() {
                     disabled={deletingId === outfit.id}
                     className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                     title="取消收藏"
+                    aria-label="取消收藏此穿搭"
                   >
                     {deletingId === outfit.id ? (
-                      <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin motion-reduce:animate-none" />
                     ) : (
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
                     )}
                   </button>
                 </div>
@@ -149,14 +150,16 @@ export default function FavoritesPage() {
                           <img
                             src={it.image_url}
                             alt={it.category || '衣物'}
-                            className="w-full h-full object-cover group-hover/item:scale-105 transition-transform"
+                            loading="lazy"
+                            decoding="async"
+                            className="w-full h-full object-cover group-hover/item:scale-105 transition-transform motion-reduce:transition-none"
                             onError={(e) => {
                               (e.target as HTMLElement).style.display = 'none';
                             }}
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-slate-300">
-                            <Layers className="w-6 h-6" />
+                            <Layers className="w-6 h-6" aria-hidden="true" />
                           </div>
                         )}
                         <div className="absolute inset-x-0 bottom-0 bg-black/60 backdrop-blur-xs px-1.5 py-0.5 text-[10px] text-white text-center truncate">
@@ -165,7 +168,7 @@ export default function FavoritesPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="col-span-3 py-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl">
+                    <div className="col-span-3 py-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl tabular-nums">
                       包含 {outfit.item_ids?.length || 0} 件单品
                     </div>
                   )}
@@ -176,8 +179,8 @@ export default function FavoritesPage() {
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">综合推荐指数</span>
                 {outfit.overall_score ? (
-                  <span className="inline-flex items-center gap-1 font-extrabold text-amber-600 bg-amber-50 border border-amber-200/60 px-2.5 py-0.5 rounded-full">
-                    <Sparkles className="w-3 h-3 text-amber-500" />
+                  <span className="inline-flex items-center gap-1 font-extrabold text-amber-600 bg-amber-50 border border-amber-200/60 px-2.5 py-0.5 rounded-full tabular-nums">
+                    <Sparkles className="w-3 h-3 text-amber-500" aria-hidden="true" />
                     <span>{Math.round(outfit.overall_score)} 分</span>
                   </span>
                 ) : (

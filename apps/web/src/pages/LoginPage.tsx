@@ -90,14 +90,18 @@ export default function LoginPage() {
           </div>
 
           {/* 切换 Tab */}
-          <div className="flex bg-slate-100/90 p-1 rounded-2xl mb-6">
+          <div role="tablist" aria-label="登录注册模式切换" className="flex bg-slate-100/90 p-1 rounded-2xl mb-6">
             <button
+              id="tab-login"
+              role="tab"
+              aria-selected={!isRegister}
+              aria-controls="auth-form"
               type="button"
               onClick={() => {
                 setIsRegister(false);
                 setError(null);
               }}
-              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all ${
+              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-colors cursor-pointer ${
                 !isRegister
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
@@ -106,12 +110,16 @@ export default function LoginPage() {
               登 录
             </button>
             <button
+              id="tab-register"
+              role="tab"
+              aria-selected={isRegister}
+              aria-controls="auth-form"
               type="button"
               onClick={() => {
                 setIsRegister(true);
                 setError(null);
               }}
-              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-all ${
+              className={`flex-1 py-2 text-sm font-bold rounded-xl transition-colors cursor-pointer ${
                 isRegister
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-900'
@@ -123,81 +131,107 @@ export default function LoginPage() {
 
           {/* 错误提示 */}
           {error && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-start gap-2.5 text-rose-700 text-xs animate-shake">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="mb-5 p-3.5 rounded-2xl bg-rose-50 border border-rose-200/80 flex items-start gap-2.5 text-rose-700 text-xs animate-shake"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
               <span>{error}</span>
             </div>
           )}
 
           {/* 表单 */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form id="auth-form" onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label
+                htmlFor="login-username"
+                className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
+              >
                 {isRegister ? '用户名' : '用户名或注册邮箱'}
               </label>
               <div className="relative">
-                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
                 <input
+                  id="login-username"
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder={isRegister ? '设置您的账号名称' : '请输入用户名或注册邮箱'}
+                  autoComplete="username"
+                  spellCheck={false}
                   required
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
                 />
               </div>
             </div>
 
             {isRegister && (
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                <label
+                  htmlFor="login-email"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
+                >
                   电子邮箱
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
                   <input
+                    id="login-email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="name@example.com"
+                    autoComplete="email"
+                    spellCheck={false}
                     required
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
                   />
                 </div>
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label
+                htmlFor="login-password"
+                className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
+              >
                 密码
               </label>
               <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
                 <input
+                  id="login-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder={isRegister ? '至少 6 个字符' : '请输入密码'}
+                  autoComplete={isRegister ? 'new-password' : 'current-password'}
                   required
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
                 />
               </div>
             </div>
 
             {isRegister && (
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                <label
+                  htmlFor="login-confirm-password"
+                  className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5"
+                >
                   确认密码
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
                   <input
+                    id="login-confirm-password"
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="再次输入以确认密码"
+                    autoComplete="new-password"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-colors"
                   />
                 </div>
               </div>
@@ -206,14 +240,18 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
+              aria-busy={loading}
               className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white font-bold text-sm shadow-md shadow-brand-500/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div
+                  aria-hidden="true"
+                  className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin motion-reduce:animate-none"
+                />
               ) : (
                 <>
                   <span>{isRegister ? '立即注册并进入' : '立即登录'}</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </>
               )}
             </button>

@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="衣见 AI — 基于多模态视觉与个性化推荐的智能穿搭系统",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 

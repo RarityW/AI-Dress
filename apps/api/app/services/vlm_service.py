@@ -292,3 +292,108 @@ async def analyze_clothing_image(image_path: str) -> dict[str, Any]:
         fallback = _get_heuristic_fallback(clean_path)
         fallback["raw_vlm_attributes"]["api_error"] = str(exc)
         return fallback
+
+
+PERSON_VLM_SYSTEM_PROMPT = """你是一个专业的时尚摄影与人像特征分析专家。
+你的任务是观察用户上传的人物照片（全身或半身照），提取用于时尚生图（Text-to-Image）的人物视觉特征描述。
+
+请严格输出合法的纯 JSON 对象，不要输出任何 Markdown 格式说明或多余文本。
+JSON 字段规范：
+- gender: 性别，只能是 "female" 或 "male"
+- persona: 一段详细的英文人像特征提示词，描述该人物的体态、发型、发色、脸型五官特征与气质（例如: "slender East Asian young woman in her 20s, shoulder-length straight black hair, delicate soft facial features, radiant natural skin, warm gentle smile, elegant posture"）。注意：仅描述人物本身的自然外貌体征，不要描述身上的具体衣服，以便后续穿着新衣服。
+
+示例输出：
+{"gender": "female", "persona": "graceful East Asian young woman, dark wavy long hair, clear refined features, confident warm expression, natural fair complexion, slim athletic build"}
+"""
+
+
+def _get_person_fallback() -> dict[str, Any]:
+    """当大模型不可用时的人像兜底特征。"""
+    return {
+        "gender": "female",
+        "persona": "stylish young East Asian individual with modern hairstyle, natural radiant skin, confident relaxed expression, elegant posture",
+    }
+
+
+async def analyze_person_image(image_path: str) -> dict[str, Any]:
+    """
+    异步分析用户上传的个人全身/半身人像照片。
+    提取性别与用于文生图的视觉 persona 描述。
+    """
+    clean_path = image_path.lstrip("/").replace("\\", "/")
+    if not settings.AI_API_KEY or not os.path.exists(clean_path):
+        return _get_person_fallback()
+
+    try:
+        with open(clean_path, "rb") as image_file:
+            encoded_image = base64.b64encode(image_file.read()).decode("utf-8")
+        ext = os.path.splitext(clean_path)[1].lower().replace(".", "")
+        mime_type = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+        image_data_uri = f"data:{mime_type};base64,{encoded_image}"
+    except Exception as e:
+        logger.error(f"读取人像图片 Base64 失败: {e}")
+        return _get_person_fallback()
+
+    headers = {
+        "Authorization": f"Bearer {settings.AI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": settings.AI_VISION_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": PERSON_VLM_SYSTEM_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "请分析这张用户人像照片中的体态容貌特征，输出用于文生图的纯 JSON。",
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_data_uri,
+                        },
+                    },
+                ],
+            },
+        ],
+        "temperature": 0.2,
+        "max_tokens": 400,
+    }
+
+    api_url = f"{settings.AI_API_BASE_URL.rstrip('/')}/chat/completions"
+
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            response = await client.post(api_url, headers=headers, json=payload)
+            response.raise_for_status()
+            res_json = response.json()
+            content = res_json["choices"][0]["message"]["content"].strip()
+
+            # 清洗并解析
+            if "```" in content:
+                m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
+                if m:
+                    content = m.group(1).strip()
+            json_m = re.search(r"(\{[\s\S]*\})", content)
+            if json_m:
+                content = json_m.group(1)
+
+            parsed = json.loads(content)
+            gender = parsed.get("gender", "female").lower()
+            if gender not in ("female", "male"):
+                gender = "female"
+            persona = parsed.get("persona") or _get_person_fallback()["persona"]
+            return {
+                "gender": gender,
+                "persona": persona,
+            }
+    except Exception as exc:
+        logger.warning(f"调用人像分析多模态 API 异常: {exc}，使用人像兜底特征")
+        return _get_person_fallback()
+

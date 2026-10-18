@@ -113,12 +113,14 @@ def get_recommendation_history(
 
 
 @router.post("/try-on", response_model=ApiResponse[TryOnResponse])
-async def create_tryon_visualization(request: TryOnRequest):
+async def create_tryon_visualization(
+    request: TryOnRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
-    基于推荐搭配单品 + 预设模特底图生成虚拟试穿效果图（方案2：双图输入）。
-    - 人脸来自真实模特照片，永远真实自然
-    - 衣物来自用户衣橱真实图片，智能贴合到模特身上
+    基于推荐搭配单品 + 模特底图（支持用户个人全身照）生成虚拟试穿效果图与时尚写真。
     """
+    user_id = str(current_user.id) if current_user else None
     result = await generate_tryon_image(
         outfit_id=request.outfit_id,
         items=request.items,
@@ -127,17 +129,19 @@ async def create_tryon_visualization(request: TryOnRequest):
         target_style=request.target_style,
         model_id=request.model_id,
         engine=request.engine,
+        user_id=user_id,
     )
     response_data = TryOnResponse(
         outfit_id=result["outfit_id"],
         image_url=result.get("image_url", ""),
         model_id=result.get("model_id"),
         engine=result.get("engine", request.engine),
-        prompt=result.get("prompt", "qwen-image-plus"),
+        prompt=result.get("prompt", "wanx2.1-t2i-plus"),
         source=result.get("source", "error"),
         error=result.get("error"),
     )
     return success_response(data=response_data, message="生图/试穿效果图生成成功")
+
 
 
 

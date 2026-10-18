@@ -160,7 +160,7 @@ export const analyticsApi = {
   },
 };
 
-// --- 预设模特图 API ---
+// --- 模特图与用户专属形象 API ---
 export const modelsApi = {
   getPresets: (): Promise<ApiResponse<Array<{
     id: string;
@@ -168,9 +168,45 @@ export const modelsApi = {
     gender: string;
     thumbnail: string;
     full_url: string;
+    is_custom?: boolean;
+    has_uploaded?: boolean;
   }>>> => {
     return api.get('/api/v1/models/');
   },
+  uploadCustomModel: (
+    file: File,
+    options?: { gender?: string; hairstyle?: string; body_shape?: string }
+  ): Promise<ApiResponse<any>> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (options?.gender) formData.append('gender', options.gender);
+    if (options?.hairstyle) formData.append('hairstyle', options.hairstyle);
+    if (options?.body_shape) formData.append('body_shape', options.body_shape);
+    return api.post('/api/v1/models/custom', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 45000,
+    });
+  },
+  deleteCustomModel: (): Promise<ApiResponse<boolean>> => {
+    return api.delete('/api/v1/models/custom');
+  },
+  makeCleanBackground: (useAi: boolean = true): Promise<ApiResponse<any>> => {
+    const formData = new FormData();
+    formData.append('use_ai', String(useAi));
+    return api.post('/api/v1/models/custom/clean-background', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    });
+  },
+  switchDisplayMode: (mode: 'white' | 'raw'): Promise<ApiResponse<any>> => {
+    const formData = new FormData();
+    formData.append('mode', mode);
+    return api.post('/api/v1/models/custom/switch-display', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
+
+
 
 export default api;

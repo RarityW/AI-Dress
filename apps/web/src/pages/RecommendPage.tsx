@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Sparkles,
@@ -24,7 +24,10 @@ import {
   Maximize2,
   X,
   Zap,
+  UploadCloud,
+  Trash2,
 } from 'lucide-react';
+
 import { useAuth } from '../contexts/AuthContext';
 import { getRecommendations, submitRecommendationFeedback, getWeather, generateTryOn, outfitsApi, modelsApi } from '../services/api';
 import { OutfitRecommendation, RecommendationResponse, PresetModel } from '../types/clothing';
@@ -169,9 +172,13 @@ export default function RecommendPage() {
   // 预设模特图与生图引擎状态
   const [presetModels, setPresetModels] = useState<PresetModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string>('female_1');
-  const [selectedEngine, setSelectedEngine] = useState<'qwen' | 'aitryon'>('qwen');
+  const [selectedEngine, setSelectedEngine] = useState<'inpaint' | 'qwen' | 'aitryon'>('inpaint');
   const [modelGenderFilter, setModelGenderFilter] = useState<'all' | 'female' | 'male'>('all');
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  // 自定义全身照专属形象上传状态与引用
+  const [uploadingCustomModel, setUploadingCustomModel] = useState<boolean>(false);
+  const customModelInputRef = useRef<HTMLInputElement>(null);
 
   // 监听 Escape 键快速关闭大图预览模态框
   useEffect(() => {
@@ -184,27 +191,104 @@ export default function RecommendPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [previewImageUrl]);
 
-  // 加载预设模特列表
+  // 加载模特列表（包含用户个人专属形象与核心男女预设）
   useEffect(() => {
     if (!isAuthenticated) return;
     modelsApi.getPresets().then((resp) => {
       if (resp.success && resp.data && resp.data.length > 0) {
         setPresetModels(resp.data);
+        const custom = resp.data.find((m) => m.id === 'custom' && m.has_uploaded);
+        if (custom) {
+          setSelectedModelId('custom');
+        }
       }
     }).catch(() => {
-      // 加载失败时使用默认 fallback 列表 (8 位模特)
+      // 离线/异常降级
       setPresetModels([
-        { id: 'male_1', label: '小轩 (男模 · 阳光俊朗)', gender: 'male', thumbnail: '/uploads/models/official_model_16.jpg', full_url: '/uploads/models/official_model_16.jpg' },
-        { id: 'female_1', label: '雅琪 (女模 · 优雅知性)', gender: 'female', thumbnail: '/uploads/models/official_model_6.jpg', full_url: '/uploads/models/official_model_6.jpg' },
-        { id: 'male_2', label: '易峰 (男模 · 商务沉稳)', gender: 'male', thumbnail: '/uploads/models/official_model_3.jpg', full_url: '/uploads/models/official_model_3.jpg' },
-        { id: 'female_2', label: '柔依 (女模 · 清新甜美)', gender: 'female', thumbnail: '/uploads/models/official_model_1.jpg', full_url: '/uploads/models/official_model_1.jpg' },
-        { id: 'male_3', label: 'Simon (男模 · 混血高级)', gender: 'male', thumbnail: '/uploads/models/official_model_4.jpg', full_url: '/uploads/models/official_model_4.jpg' },
-        { id: 'female_3', label: '诗涵 (女模 · 都市摩登)', gender: 'female', thumbnail: '/uploads/models/official_model_2.jpg', full_url: '/uploads/models/official_model_2.jpg' },
-        { id: 'male_4', label: '宇航 (男模 · 潮酷街头)', gender: 'male', thumbnail: '/uploads/models/official_model_8.jpg', full_url: '/uploads/models/official_model_8.jpg' },
-        { id: 'female_4', label: '语晴 (女模 · 元气日常)', gender: 'female', thumbnail: '/uploads/models/official_model_5.jpg', full_url: '/uploads/models/official_model_5.jpg' },
+        { id: 'custom', label: '我的形象 (点击上传)', gender: 'unisex', thumbnail: '', full_url: '', is_custom: true, has_uploaded: false },
+        { id: 'female_1', label: '雅琪 (女模 · 优雅知性)', gender: 'female', thumbnail: '/uploads/models/official_model_6.jpg', full_url: '/uploads/models/official_model_6.jpg', is_custom: false, has_uploaded: true },
+        { id: 'male_1', label: '小轩 (男模 · 阳光俊朗)', gender: 'male', thumbnail: '/uploads/models/official_model_16.jpg', full_url: '/uploads/models/official_model_16.jpg', is_custom: false, has_uploaded: true },
       ]);
     });
   }, [isAuthenticated]);
+
+  // 用户上传全身照处理
+  const handleCustomModelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCustomModel(true);
+    try {
+      const res = await modelsApi.uploadCustomModel(file);
+      if (res.success && res.data) {
+        const modelsResp = await modelsApi.getPresets();
+        if (modelsResp.success && modelsResp.data) {
+          setPresetModels(modelsResp.data);
+        }
+        setSelectedModelId('custom');
+      }
+    } catch (err: any) {
+      console.error('上传个人全身照失败:', err);
+      alert(err?.response?.data?.message || '上传个人全身照失败，请重试');
+    } finally {
+      setUploadingCustomModel(false);
+      if (customModelInputRef.current) customModelInputRef.current.value = '';
+    }
+  };
+
+  // 用户清除自定义形象
+  const handleDeleteCustomModel = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('确定要清除已上传的专属全身照形象吗？')) return;
+    try {
+      await modelsApi.deleteCustomModel();
+      const modelsResp = await modelsApi.getPresets();
+      if (modelsResp.success && modelsResp.data) {
+        setPresetModels(modelsResp.data);
+      }
+      setSelectedModelId('female_1');
+    } catch (err) {
+      console.error('删除专属形象失败:', err);
+    }
+  };
+
+  // 纯白影棚背景生成与切换处理
+  const [generatingCleanBg, setGeneratingCleanBg] = useState<boolean>(false);
+
+  const handleCleanBackground = async (useAi: boolean = true) => {
+    setGeneratingCleanBg(true);
+    try {
+      const resp = await modelsApi.makeCleanBackground(useAi);
+      if (resp.success) {
+        const modelsResp = await modelsApi.getPresets();
+        if (modelsResp.success && modelsResp.data) {
+          setPresetModels(modelsResp.data);
+        }
+      } else {
+        alert(resp.message || '生成纯白画像失败，请重试');
+      }
+    } catch (err: any) {
+      console.error('生成纯白画像失败:', err);
+      alert(err?.response?.data?.message || '生成纯白画像失败，请重试');
+    } finally {
+      setGeneratingCleanBg(false);
+    }
+  };
+
+  const handleSwitchModelDisplay = async (e: React.MouseEvent, mode: 'white' | 'raw') => {
+    e.stopPropagation();
+    try {
+      const resp = await modelsApi.switchDisplayMode(mode);
+      if (resp.success) {
+        const modelsResp = await modelsApi.getPresets();
+        if (modelsResp.success && modelsResp.data) {
+          setPresetModels(modelsResp.data);
+        }
+      }
+    } catch (err) {
+      console.error('切换模特展示底图失败:', err);
+    }
+  };
+
 
   // AI 模特试穿生图状态
   const [tryOnLoading, setTryOnLoading] = useState<Record<string, boolean>>({});
@@ -213,7 +297,7 @@ export default function RecommendPage() {
   const [tryOnSource, setTryOnSource] = useState<Record<string, string>>({});
   const [tryOnEngine, setTryOnEngine] = useState<Record<string, string>>({});
 
-  const handleGenerateTryOn = async (outfit: OutfitRecommendation, engineOverride?: 'qwen' | 'aitryon') => {
+  const handleGenerateTryOn = async (outfit: OutfitRecommendation, engineOverride?: 'inpaint' | 'qwen' | 'aitryon') => {
     const outfitId = outfit.outfit_id;
     const engineToUse = engineOverride || selectedEngine;
     setTryOnLoading((prev) => ({ ...prev, [outfitId]: true }));
@@ -540,6 +624,15 @@ export default function RecommendPage() {
 
           {/* AI 生图引擎与出镜模特配置 */}
           <div className="space-y-4 pt-4 border-t border-gray-100">
+            {/* 隐藏的文件上传 input */}
+            <input
+              type="file"
+              ref={customModelInputRef}
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleCustomModelFileChange}
+              className="hidden"
+            />
+
             {/* 引擎切换器 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -548,11 +641,39 @@ export default function RecommendPage() {
                   <span className="text-sm font-semibold text-gray-800">AI 视觉生成引擎</span>
                 </div>
                 <span className="text-xs text-purple-700 font-medium bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-100">
-                  {selectedEngine === 'qwen' ? '🌟 通义千问 Qwen 旗舰大片' : '👗 OutfitAnyone 1:1 像素试衣'}
+                  {selectedEngine === 'inpaint'
+                    ? '🌟 原貌定格换装 (万相局部重绘 · 推荐)'
+                    : selectedEngine === 'qwen'
+                    ? '📸 通义万相 2.1 纯白影棚写真'
+                    : '👗 OutfitAnyone 1:1 像素试衣'}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  aria-pressed={selectedEngine === 'inpaint'}
+                  onClick={() => setSelectedEngine('inpaint')}
+                  className={`p-3.5 rounded-2xl border-2 text-left transition-colors cursor-pointer ${
+                    selectedEngine === 'inpaint'
+                      ? 'border-emerald-600 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-300'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                      <span aria-hidden="true">🌟</span>
+                      <span>原貌定格换装 (推荐)</span>
+                    </span>
+                    <span className="text-[10px] font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 px-2 py-0.5 rounded-full">
+                      原貌100%保留
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+                    人物不变、动作姿势不变、背景不变、头型发型100%保留！通过智能服装遮罩，仅把身上的衣服样式替换为推荐方案。
+                  </p>
+                </button>
+
                 <button
                   type="button"
                   aria-pressed={selectedEngine === 'qwen'}
@@ -565,15 +686,15 @@ export default function RecommendPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <span aria-hidden="true">🌟</span>
-                      <span>阿里 Qwen 真实人像大片</span>
+                      <span aria-hidden="true">📸</span>
+                      <span>万相 2.1 纯白写真</span>
                     </span>
                     <span className="text-[10px] font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-2 py-0.5 rounded-full">
-                      推荐
+                      空白背景 · 写真
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-                    超真实自然人脸、微表情与发丝级细节，单反景深与场景光影融合，极致逼真人像写真。
+                    全画幅纯白单色影棚背景，保持真实身材比例与发型发色，彻底杜绝任何多余饰品，生成时尚大片。
                   </p>
                 </button>
 
@@ -590,17 +711,18 @@ export default function RecommendPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
                       <span aria-hidden="true">👗</span>
-                      <span>OutfitAnyone Plus 1:1 像素试衣</span>
+                      <span>1:1 像素试衣</span>
                     </span>
                     <span className="text-[10px] font-medium text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                      高保真
+                      OutfitAnyone
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-                    将用户上传的平铺衣物图片剪裁与纹理，1:1 精确贴合至选定模特身姿。
+                    将您衣橱中的真实单品像素级裁剪与纹理，精确贴合至选定模特或您自己的全身照身姿。
                   </p>
                 </button>
               </div>
+
             </div>
 
             {/* 模特选择 */}
@@ -608,7 +730,8 @@ export default function RecommendPage() {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <Camera className="h-4 w-4 text-purple-600" aria-hidden="true" />
-                  <span className="text-sm font-semibold text-gray-800">选择出镜模特</span>
+                  <span className="text-sm font-semibold text-gray-800">选择出镜模特 / 个人形象</span>
+                  <span className="text-xs text-gray-400">（支持上传真人全身照量身定制）</span>
                 </div>
                 {/* 性别筛选 */}
                 <div role="tablist" aria-label="模特性别筛选" className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg text-xs">
@@ -632,7 +755,7 @@ export default function RecommendPage() {
                       modelGenderFilter === 'female' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    👩 女模 ({presetModels.filter(m => m.gender === 'female').length})
+                    👩 女模 ({presetModels.filter(m => m.gender === 'female' || (m.id === 'custom' && m.gender === 'female')).length})
                   </button>
                   <button
                     type="button"
@@ -643,48 +766,205 @@ export default function RecommendPage() {
                       modelGenderFilter === 'male' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    👨 男模 ({presetModels.filter(m => m.gender === 'male').length})
+                    👨 男模 ({presetModels.filter(m => m.gender === 'male' || (m.id === 'custom' && m.gender === 'male')).length})
                   </button>
                 </div>
               </div>
 
-              {/* 模特卡片网格 */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-72 overflow-y-auto pr-1">
-                {(presetModels.filter((m) => modelGenderFilter === 'all' || m.gender === modelGenderFilter)).map((model) => (
-                  <button
-                    key={model.id}
-                    type="button"
-                    aria-pressed={selectedModelId === model.id}
-                    aria-label={`选择出镜模特: ${model.label}`}
-                    onClick={() => setSelectedModelId(model.id)}
-                    className={`relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer aspect-[3/4] group focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none ${
-                      selectedModelId === model.id
-                        ? 'border-purple-600 ring-2 ring-purple-300 ring-offset-1 shadow-md'
-                        : 'border-gray-200 hover:border-purple-300'
-                    }`}
-                  >
-                    <img
-                      src={model.thumbnail}
-                      alt={model.label}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300 motion-reduce:transition-none"
-                    />
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-6 pb-2 px-2">
-                      <div className="text-white text-[11px] font-bold text-center leading-tight truncate">
-                        {model.label}
+              {/* 精简清爽的模特卡片网格 (支持用户个人形象 + 2 位经典预设模特) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                {(presetModels.filter((m) => {
+                  if (m.id === 'custom') return true;
+                  return modelGenderFilter === 'all' || m.gender === modelGenderFilter;
+                })).map((model) => {
+                  if (model.id === 'custom') {
+                    if (!model.has_uploaded) {
+                      return (
+                        <button
+                          key="custom-upload-slot"
+                          type="button"
+                          onClick={() => customModelInputRef.current?.click()}
+                          disabled={uploadingCustomModel}
+                          className="relative rounded-2xl border-2 border-dashed border-purple-300 hover:border-purple-500 bg-purple-50/40 hover:bg-purple-50/80 p-5 flex flex-col items-center justify-center text-center aspect-[3/4] transition-all group cursor-pointer shadow-xs"
+                        >
+                          {uploadingCustomModel ? (
+                            <div className="space-y-2.5 text-center">
+                              <RefreshCw className="w-8 h-8 text-purple-600 animate-spin mx-auto" />
+                              <p className="text-xs font-bold text-purple-800">AI 正在深度解析体态特征...</p>
+                              <p className="text-[10px] text-gray-500">正在生成个人专属文生图参数</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="w-12 h-12 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-purple-600 group-hover:text-white transition-all shadow-xs">
+                                <UploadCloud className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <div className="text-xs font-bold text-gray-900 group-hover:text-purple-700 transition-colors">
+                                  上传我的全身照
+                                </div>
+                                <div className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                                  AI 提取身材容貌特征<br />定制您的专属真人穿搭写真
+                                </div>
+                              </div>
+                              <span className="inline-block text-[10px] font-bold text-purple-700 bg-purple-100/90 px-2.5 py-0.5 rounded-full">
+                                📸 点击选择照片
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    } else {
+                      return (
+                        <div
+                          key="custom-model-card"
+                          onClick={() => setSelectedModelId('custom')}
+                          className={`relative rounded-2xl overflow-hidden border-2 transition-all cursor-pointer aspect-[3/4] group ${
+                            selectedModelId === 'custom'
+                              ? 'border-purple-600 ring-2 ring-purple-300 ring-offset-1 shadow-md'
+                              : 'border-gray-200 hover:border-purple-300'
+                          }`}
+                        >
+                          <img
+                            src={model.thumbnail}
+                            alt="我的专属形象"
+                            className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                          />
+
+                          {/* 正在生成纯白影棚背景时的遮罩层 */}
+                          {generatingCleanBg && (
+                            <div className="absolute inset-0 bg-black/65 backdrop-blur-xs flex flex-col items-center justify-center text-center p-3 z-20 text-white">
+                              <RefreshCw className="w-7 h-7 text-white animate-spin mb-2" />
+                              <p className="text-xs font-bold">万相 AI 正在纯化背景...</p>
+                              <p className="text-[10px] text-gray-300 mt-0.5">重绘纯白高级影棚底色</p>
+                            </div>
+                          )}
+
+                          {/* 顶部标签 & 操作区 */}
+                          <div className="absolute top-2 inset-x-2 flex items-center justify-between z-10">
+                            <span className="text-[10px] font-bold text-white bg-purple-600/90 backdrop-blur-xs px-2 py-0.5 rounded-full shadow">
+                              ⭐ 我的专属形象
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                title="重新上传全身照"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  customModelInputRef.current?.click();
+                                }}
+                                className="w-6 h-6 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-colors shadow"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                title="清除此个人形象"
+                                onClick={handleDeleteCustomModel}
+                                className="w-6 h-6 rounded-full bg-red-600/80 hover:bg-red-700 text-white flex items-center justify-center transition-colors shadow"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* 中上部：纯白影棚背景切换胶囊 / 净化触发按钮 */}
+                          <div className="absolute top-8 left-2 z-10">
+                            {model.has_clean_white ? (
+                              <div className="flex items-center bg-black/65 backdrop-blur-md rounded-full p-0.5 border border-white/20 text-[10px] shadow">
+                                <button
+                                  type="button"
+                                  title="切换为纯白影棚背景"
+                                  onClick={(e) => handleSwitchModelDisplay(e, 'white')}
+                                  className={`px-2 py-0.5 rounded-full font-bold transition-all ${
+                                    model.active_display === 'white'
+                                      ? 'bg-white text-gray-900 shadow-xs'
+                                      : 'text-white/80 hover:text-white'
+                                  }`}
+                                >
+                                  ✨ 纯白影棚
+                                </button>
+                                <button
+                                  type="button"
+                                  title="切换为原拍照背景"
+                                  onClick={(e) => handleSwitchModelDisplay(e, 'raw')}
+                                  className={`px-2 py-0.5 rounded-full font-bold transition-all ${
+                                    model.active_display === 'raw'
+                                      ? 'bg-white text-gray-900 shadow-xs'
+                                      : 'text-white/80 hover:text-white'
+                                  }`}
+                                >
+                                  📷 原拍照
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                title="当背景杂乱时，调用模型一键生成背景纯白干净的影棚底图"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCleanBackground(true);
+                                }}
+                                disabled={generatingCleanBg}
+                                className="px-2 py-0.5 rounded-full bg-emerald-600/90 hover:bg-emerald-600 text-white text-[10px] font-bold shadow flex items-center gap-1 transition-all"
+                              >
+                                <span>✨ 一键纯白影棚底</span>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-6 pb-2.5 px-2">
+                            <div className="text-white text-xs font-bold text-center leading-tight truncate">
+                              我的形象 ({model.active_display === 'white' ? '纯白影棚' : '原拍照'})
+                            </div>
+                          </div>
+                          {selectedModelId === 'custom' && (
+                            <div className="absolute bottom-2.5 right-2.5 w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center shadow">
+                              <Check className="w-3 h-3 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                  }
+
+                  // 官方预设模特
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      aria-pressed={selectedModelId === model.id}
+                      aria-label={`选择出镜模特: ${model.label}`}
+                      onClick={() => setSelectedModelId(model.id)}
+                      className={`relative rounded-2xl overflow-hidden border-2 transition-all cursor-pointer aspect-[3/4] group focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:outline-none ${
+                        selectedModelId === model.id
+                          ? 'border-purple-600 ring-2 ring-purple-300 ring-offset-1 shadow-md'
+                          : 'border-gray-200 hover:border-purple-300'
+                      }`}
+                    >
+                      <img
+                        src={model.thumbnail}
+                        alt={model.label}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300 motion-reduce:transition-none"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent pt-6 pb-2.5 px-2">
+                        <div className="text-white text-xs font-bold text-center leading-tight truncate">
+                          {model.label}
+                        </div>
                       </div>
-                    </div>
-                    {selectedModelId === model.id && (
-                      <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center shadow">
-                        <Check className="w-3 h-3 text-white" aria-hidden="true" />
-                      </div>
-                    )}
-                  </button>
-                ))}
+                      {selectedModelId === model.id && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center shadow">
+                          <Check className="w-3 h-3 text-white" aria-hidden="true" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
+
 
           {/* 提交按钮 */}
           <div className="pt-2 flex justify-end">
@@ -922,10 +1202,16 @@ export default function RecommendPage() {
                                 <span className="text-sm font-bold text-gray-900">
                                   AI 穿搭上身效果
                                 </span>
-                                {(tryOnEngine[outfit.outfit_id] === 'qwen' || tryOnSource[outfit.outfit_id] === 'qwen-image-plus') && (
-                                  <span className="text-[11px] font-bold text-purple-700 bg-gradient-to-r from-purple-100 to-indigo-100 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                {(tryOnEngine[outfit.outfit_id] === 'inpaint' || tryOnSource[outfit.outfit_id]?.includes('imageedit')) && (
+                                  <span className="text-[11px] font-bold text-emerald-700 bg-gradient-to-r from-emerald-100 to-teal-100 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
                                     <span>🌟</span>
-                                    <span>阿里 Qwen 真实时尚大片</span>
+                                    <span>原貌定格换装 (面容/发型/姿势/背景100%保留)</span>
+                                  </span>
+                                )}
+                                {(tryOnEngine[outfit.outfit_id] === 'qwen' || tryOnSource[outfit.outfit_id]?.includes('t2i') || tryOnSource[outfit.outfit_id] === 'qwen-image-plus') && (
+                                  <span className="text-[11px] font-bold text-purple-700 bg-gradient-to-r from-purple-100 to-indigo-100 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                    <span>📸</span>
+                                    <span>通义万相 2.1 纯白写真 (空白背景 · 原貌锁定)</span>
                                   </span>
                                 )}
                                 {(tryOnEngine[outfit.outfit_id] === 'aitryon' || tryOnSource[outfit.outfit_id] === 'aitryon-plus' || tryOnSource[outfit.outfit_id] === 'aitryon') && (
@@ -963,23 +1249,23 @@ export default function RecommendPage() {
                                 <div className="flex items-center gap-1">
                                   <button
                                     type="button"
-                                    onClick={() => handleGenerateTryOn(outfit, 'qwen')}
+                                    onClick={() => handleGenerateTryOn(outfit, 'inpaint')}
                                     disabled={tryOnLoading[outfit.outfit_id]}
-                                    title="使用阿里 Qwen 重新生成超真实人像大片"
-                                    className="text-xs text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg font-medium inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                                    title="原貌定格换装（面容、发型、动作、背景100%保留）"
+                                    className="text-xs text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
                                   >
                                     <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
-                                    <span>Qwen 生图</span>
+                                    <span>原貌定格</span>
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleGenerateTryOn(outfit, 'aitryon')}
+                                    onClick={() => handleGenerateTryOn(outfit, 'qwen')}
                                     disabled={tryOnLoading[outfit.outfit_id]}
-                                    title="使用 OutfitAnyone Plus 进行 1:1 像素贴合试衣"
-                                    className="text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg font-medium inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                                    title="使用阿里通义万相 2.1 重新生成纯白影棚写真"
+                                    className="text-xs text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg font-medium inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
                                   >
                                     <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
-                                    <span>1:1 试衣</span>
+                                    <span>纯白写真</span>
                                   </button>
                                 </div>
                               </div>
@@ -988,7 +1274,7 @@ export default function RecommendPage() {
                             {/* 图片展示卡片（点击可全屏） */}
                             <div
                               onClick={() => setPreviewImageUrl(tryOnImages[outfit.outfit_id])}
-                              className="relative rounded-2xl overflow-hidden max-w-sm mx-auto shadow-lg border border-purple-100 aspect-square bg-gray-100 group cursor-zoom-in"
+                              className="relative rounded-2xl overflow-hidden max-w-sm mx-auto shadow-lg border border-purple-100 aspect-square bg-white group cursor-zoom-in"
                             >
                               <img
                                 src={tryOnImages[outfit.outfit_id]}
@@ -1006,47 +1292,55 @@ export default function RecommendPage() {
                                 ℹ️ {tryOnError[outfit.outfit_id]}
                               </p>
                             )}
-                            <p className="text-center text-xs text-gray-400 leading-relaxed">
-                              {tryOnEngine[outfit.outfit_id] === 'qwen' || tryOnSource[outfit.outfit_id] === 'qwen-image-plus'
-                                ? '由阿里通义千问 Qwen-Image-Plus 生图旗舰大模型智能合成 · 真实五官与发丝级光影，场景深度融合'
+                            <p className="text-center text-xs text-gray-500 leading-relaxed font-medium">
+                              {tryOnEngine[outfit.outfit_id] === 'inpaint' || tryOnSource[outfit.outfit_id]?.includes('imageedit')
+                                ? '由阿里通义万相 2.1 局部重绘智能合成 · 人物面容、发型发色、身体动作与背景 100% 原封不动保留，仅换衣服'
+                                : tryOnEngine[outfit.outfit_id] === 'qwen' || tryOnSource[outfit.outfit_id]?.includes('wanx')
+                                ? '由阿里通义万相 2.1 旗舰大模型智能合成 · 纯白影棚背景，严格保持真实身材与发型，无任何多余配饰'
                                 : '由阿里云百炼 OutfitAnyone Plus 试衣模型智能合成 · 1:1 真实衣物像素贴合'}
                             </p>
                           </div>
                         ) : tryOnLoading[outfit.outfit_id] ? (
                           <div className="bg-gradient-to-br from-purple-50/80 via-indigo-50/50 to-white rounded-2xl p-8 border border-purple-200/80 text-center space-y-3.5 shadow-sm">
-                            <div className="inline-flex p-3.5 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/20 animate-pulse">
+                            <div className="inline-flex p-3.5 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-indigo-600 text-white shadow-md shadow-emerald-500/20 animate-pulse">
                               <Sparkles className="h-6 w-6 animate-spin" />
                             </div>
                             <div className="text-base font-extrabold text-slate-900">
-                              {selectedEngine === 'qwen' ? '🌟 阿里通义千问正在渲染超真实时尚大片...' : '👗 OutfitAnyone 正在进行 1:1 像素贴合试穿...'}
+                              {selectedEngine === 'inpaint'
+                                ? '🌟 通义万相 2.1 正在进行局部重绘定格换装 (面容/发型/姿态/背景 100% 保持)...'
+                                : selectedEngine === 'qwen'
+                                ? '📸 通义万相 2.1 正在生成纯白影棚写真 (锁定发型与身材)...'
+                                : '👗 OutfitAnyone 正在进行 1:1 像素贴合试穿...'}
                             </div>
                             <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-                              {selectedEngine === 'qwen'
-                                ? '正在结合单品色彩面料、真实天气与场景光影，生成自然五官与大师级单反人像（预计 6~12 秒）'
+                              {selectedEngine === 'inpaint'
+                                ? '智能提取服装遮罩，原图人脸、发型动作与背景 100% 冻结，仅把衣服换成推荐单品（预计 10~18 秒）'
+                                : selectedEngine === 'qwen'
+                                ? '严格采用纯白无缝影棚背景，保持原图发型发色与真实身材比例，杜绝多余配饰（预计 6~12 秒）'
                                 : '正在将您衣橱中的真实单品像素级迁移贴合至模特身姿（预计 10~20 秒）'}
                             </p>
                           </div>
                         ) : (
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-purple-50/80 via-indigo-50/60 to-purple-50/80 rounded-2xl p-4 border border-purple-100 shadow-xs">
-                            <div className="text-xs text-purple-900 flex items-center gap-2 font-medium">
-                              <Sparkles className="h-4 w-4 text-purple-600 shrink-0" />
-                              <span>想看看这套穿搭在模特身上的真实上身效果？点击一键生成</span>
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-emerald-50/70 via-indigo-50/50 to-purple-50/70 rounded-2xl p-4 border border-emerald-100/80 shadow-xs">
+                            <div className="text-xs text-slate-800 flex items-center gap-2 font-medium">
+                              <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span>想看看这套穿搭的上身真实效果？点击一键定格换装</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => handleGenerateTryOn(outfit, 'qwen')}
-                                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 transition-all active:scale-[0.98] cursor-pointer"
+                                onClick={() => handleGenerateTryOn(outfit, 'inpaint')}
+                                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/20 transition-all active:scale-[0.98] cursor-pointer"
                               >
                                 <Sparkles className="h-3.5 w-3.5" />
-                                <span>生成 Qwen 大片 (推荐)</span>
+                                <span>原貌定格换装 (推荐)</span>
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleGenerateTryOn(outfit, 'aitryon')}
+                                onClick={() => handleGenerateTryOn(outfit, 'qwen')}
                                 className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer"
                               >
-                                <span>1:1 像素试衣</span>
+                                <span>纯白写真</span>
                               </button>
                             </div>
                           </div>
@@ -1057,6 +1351,8 @@ export default function RecommendPage() {
                           </p>
                         )}
                       </div>
+
+
 
                     </div>
                   </div>

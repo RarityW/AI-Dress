@@ -77,7 +77,14 @@ def get_current_user(
     if sub is None:
         raise credentials_exception
 
-    user = db.query(User).filter(or_(User.account == sub, User.username == sub)).first()
+    import uuid as _uuid
+    user = None
+    try:
+        val_uuid = _uuid.UUID(str(sub))
+        user = db.query(User).filter(or_(User.account == sub, User.username == sub, User.id == val_uuid)).first()
+    except Exception:
+        user = db.query(User).filter(or_(User.account == sub, User.username == sub)).first()
+
     if user is None:
         raise credentials_exception
 
@@ -97,7 +104,12 @@ def get_current_user_optional(
         if payload is not None:
             sub = payload.get("sub")
             if sub:
-                user = db.query(User).filter(or_(User.account == sub, User.username == sub)).first()
+                import uuid as _uuid
+                try:
+                    val_uuid = _uuid.UUID(str(sub))
+                    user = db.query(User).filter(or_(User.account == sub, User.username == sub, User.id == val_uuid)).first()
+                except Exception:
+                    user = db.query(User).filter(or_(User.account == sub, User.username == sub)).first()
                 if user:
                     return user
 

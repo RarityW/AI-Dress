@@ -70,7 +70,7 @@ class TryOnRequest(BaseModel):
     gender: str = Field(default="unisex", description="模特性别")
     scene: str = Field(default="daily", description="搭配场景")
     target_style: str = Field(default="casual", description="风格基调")
-    engine: str = Field(default="qwen", description="生图引擎：qwen (通义千问真实人像大片) 或 aitryon (OutfitAnyone 像素级试衣)")
+    engine: str = Field(default="inpaint", description="生图引擎：inpaint (原貌定格一键换装，人物动作发型背景100%保留) 或 qwen (通义万相纯白影棚写真)")
 
 
 class TryOnResponse(BaseModel):

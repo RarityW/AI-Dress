@@ -167,7 +167,7 @@ export interface TryOnRequest {
   gender?: string;
   scene?: string;
   target_style?: string;
-  engine?: 'qwen' | 'aitryon';
+  engine?: 'inpaint' | 'qwen' | 'aitryon';
 }
 
 /** AI 虚拟试穿与生图结果 */
@@ -181,11 +181,21 @@ export interface TryOnResponse {
   error?: string;
 }
 
-/** 预设模特信息 */
+/** 模特与个人形象信息 */
 export interface PresetModel {
   id: string;
   label: string;
   gender: string;
   thumbnail: string;
   full_url: string;
+  hairstyle?: string;
+  body_shape?: string;
+  is_custom?: boolean;
+  has_uploaded?: boolean;
+  raw_url?: string;
+  white_url?: string;
+  has_clean_white?: boolean;
+  active_display?: 'white' | 'raw';
 }
+
+

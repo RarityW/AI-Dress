@@ -8,7 +8,32 @@ __pycache__/
 *.db
 *.sqlite
 *.sqlite3
-uploads/
+# User-uploaded files and runtime assets (ignore by default)
+uploads/*
+apps/api/uploads/*
+
+# Whitelist official demo models
+!uploads/models/
+!apps/api/uploads/models/
+!uploads/models/**
+!apps/api/uploads/models/**
+
+# Whitelist seed clothing assets
+!uploads/clothing/
+!apps/api/uploads/clothing/
+uploads/clothing/*
+apps/api/uploads/clothing/*
+!uploads/clothing/seed_*
+!apps/api/uploads/clothing/seed_*
+
+# Whitelist seed shoes assets
+!uploads/clothing/shoes_test/
+!apps/api/uploads/clothing/shoes_test/
+uploads/clothing/shoes_test/*
+apps/api/uploads/clothing/shoes_test/*
+!uploads/clothing/shoes_test/seed_*
+!apps/api/uploads/clothing/shoes_test/seed_*
+
 data/
 dist/
 build/

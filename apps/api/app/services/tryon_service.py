@@ -670,7 +670,7 @@ async def generate_qwen_fashion_lookbook(
     # 优先使用 wanx2.1-t2i-plus，如遇限流备用 wanx2.1-t2i-turbo
     candidate_models = ["wanx2.1-t2i-plus", "wanx2.1-t2i-turbo"]
 
-    async with httpx.AsyncClient(timeout=35.0) as client:
+    async with httpx.AsyncClient(timeout=35.0, trust_env=False) as client:
         last_err = ""
         for model_name in candidate_models:
             payload = {
@@ -745,8 +745,9 @@ async def generate_qwen_fashion_lookbook(
                         }
 
             except Exception as e:
-                logger.error(f"{model_name} 生图异常: {e}")
-                last_err = str(e)
+                err_detail = _format_exception_msg(e)
+                logger.error(f"{model_name} 生图异常: {err_detail}")
+                last_err = err_detail
 
         return _error_result(outfit_id, model_id, f"AI 生图生成暂时失败: {last_err[:120]}")
 
@@ -819,15 +820,7 @@ async def generate_virtual_tryon(
             bottom_garment_url = await _resolve_image_to_dashscope_url(img, api_key, category=cat)
 
     if not top_garment_url and not bottom_garment_url:
-        logger.info("搭配中无单品平铺图，自动切换至万相旗舰生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        return _error_result(outfit_id, model_id, "搭配中缺少可供 1:1 像素试穿的衣物平铺图")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -854,39 +847,20 @@ async def generate_virtual_tryon(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             submit_resp = await client.post(
                 DASHSCOPE_SYNTHESIS_URL,
                 headers=headers,
                 json=payload,
             )
 
-            # 若 aitryon 接口调用受限（如未开通 aitryon-plus 权限），无缝平滑回退至万相生图
             if submit_resp.status_code != 200:
-                logger.warning(
-                    f"aitryon-plus 试穿提交未成功 (HTTP {submit_resp.status_code}): {submit_resp.text}，"
-                    "已无缝平滑回退至通义万相旗舰生图..."
-                )
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                logger.warning(f"aitryon-plus 试穿提交未成功 (HTTP {submit_resp.status_code}): {submit_resp.text}")
+                return _error_result(outfit_id, model_id, f"1:1 像素试穿提交失败: HTTP {submit_resp.status_code}")
 
             task_id = submit_resp.json().get("output", {}).get("task_id")
             if not task_id:
-                logger.warning("未能获取 aitryon task_id，自动回退至万相生图...")
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                return _error_result(outfit_id, model_id, "未能获取试穿任务 ID，请重试")
 
             logger.info(f"aitryon-plus 试衣任务已提交: task_id={task_id}")
 
@@ -898,7 +872,7 @@ async def generate_virtual_tryon(
                 poll_resp = await client.get(
                     f"{DASHSCOPE_TASK_URL}/{task_id}",
                     headers=poll_headers,
-                    timeout=10.0
+                    timeout=15.0
                 )
                 if poll_resp.status_code != 200:
                     continue
@@ -911,15 +885,8 @@ async def generate_virtual_tryon(
                     break
                 elif task_status in ("FAILED", "CANCELED"):
                     err_msg = poll_data.get("output", {}).get("message", "生成任务失败")
-                    logger.warning(f"aitryon-plus 任务失败: {err_msg}，回退至万相生图...")
-                    return await generate_qwen_fashion_lookbook(
-                        outfit_id=outfit_id,
-                        items=items,
-                        model_id=model_id,
-                        scene=scene,
-                        target_style=target_style,
-                        user_id=user_id,
-                    )
+                    logger.warning(f"aitryon-plus 任务失败: {err_msg}")
+                    return _error_result(outfit_id, model_id, f"1:1 像素试穿失败: {err_msg}")
 
             if generated_img_url:
                 dl_resp = await client.get(generated_img_url, timeout=30.0)
@@ -933,19 +900,36 @@ async def generate_virtual_tryon(
                         "source": "aitryon-plus",
                         "engine": "aitryon",
                     }
+                else:
+                    return _error_result(outfit_id, model_id, f"下载试穿结果图失败 HTTP {dl_resp.status_code}")
+            else:
+                return _error_result(outfit_id, model_id, "1:1 像素试穿超时，请稍后重试")
 
     except Exception as e:
-        logger.warning(f"虚拟试穿执行异常: {e}，自动回退至万相生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        err_detail = _format_exception_msg(e)
+        logger.warning(f"虚拟试穿执行异常: {err_detail}")
+        return _error_result(outfit_id, model_id, f"虚拟试穿执行异常: {err_detail}")
 
     return _error_result(outfit_id, model_id, "试穿生成超时，请稍后重试")
+
+
+def _format_exception_msg(e: Any) -> str:
+    """提取清晰易懂的异常说明。"""
+    err_str = str(e).strip()
+    cause_str = str(getattr(e, "__cause__", "")).strip() if getattr(e, "__cause__", None) else ""
+    full_detail = f"{err_str} {cause_str}".strip() or repr(e)
+    network_keywords = [
+        "SSL", "ConnectError", "EOF occurred", "EndOfStream",
+        "RemoteProtocolError", "ConnectionReset", "RemoteDisconnected",
+        "ConnectTimeout", "ReadTimeout"
+    ]
+    if any(k in full_detail or k in str(type(e)) for k in network_keywords):
+        return "网络连接被切断 (无法直连阿里百炼生图服务，请在 Clash/VPN 中将模式切换为【规则模式】或关闭全局代理)"
+    if "401" in full_detail or "InvalidApiKey" in full_detail:
+        return "API Key 无效或未授权，请检查 .env 配置"
+    if "429" in full_detail or "Throttling" in full_detail:
+        return "API 调用受限或超出频率，请稍后再试"
+    return full_detail[:120]
 
 
 def _error_result(outfit_id: str, model_id: str, error: str) -> dict[str, Any]:
@@ -1051,15 +1035,8 @@ async def generate_inpaint_tryon(
             local_p = alt_p
 
     if not local_p.exists():
-        logger.warning(f"模特底图不存在: {local_p}，回退至纯白写真生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        logger.warning(f"模特底图不存在: {local_p}")
+        return _error_result(outfit_id, model_id, f"未找到出镜模特底图文件: {local_p}")
 
     # 2. 检查缓存
     cache_dir = Path("uploads") / "tryon"
@@ -1083,15 +1060,8 @@ async def generate_inpaint_tryon(
     loop = asyncio.get_running_loop()
     mask_path = await loop.run_in_executor(None, get_or_create_clothing_mask, local_p)
     if not mask_path.exists():
-        logger.warning("未能生成服装遮罩，回退至纯白写真生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        logger.warning("未能生成服装遮罩")
+        return _error_result(outfit_id, model_id, "未能提取模特服装遮罩，请检查模特图片")
 
     # 4. 构建重绘提示词
     color_zh_map = {
@@ -1147,37 +1117,19 @@ async def generate_inpaint_tryon(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             submit_resp = await client.post(
                 DASHSCOPE_SYNTHESIS_URL,
                 headers=headers,
                 json=payload,
             )
             if submit_resp.status_code != 200:
-                logger.warning(
-                    f"wanx2.1-imageedit 提交失败 (HTTP {submit_resp.status_code}): {submit_resp.text}，"
-                    "自动回退至纯白写真生图..."
-                )
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                logger.warning(f"wanx2.1-imageedit 提交失败 (HTTP {submit_resp.status_code}): {submit_resp.text}")
+                return _error_result(outfit_id, model_id, f"国内大模型局部重绘提交失败: HTTP {submit_resp.status_code} - {submit_resp.text[:120]}")
 
             task_id = submit_resp.json().get("output", {}).get("task_id")
             if not task_id:
-                logger.warning("未能获取 imageedit task_id，回退至纯白写真生图...")
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                return _error_result(outfit_id, model_id, "国内大模型未能返回有效任务 ID，请重试")
 
             logger.info(f"wanx2.1-imageedit 局部重绘定格换装任务已提交: task_id={task_id}")
             poll_headers = {"Authorization": f"Bearer {api_key}"}
@@ -1188,7 +1140,7 @@ async def generate_inpaint_tryon(
                 poll_resp = await client.get(
                     f"{DASHSCOPE_TASK_URL}/{task_id}",
                     headers=poll_headers,
-                    timeout=10.0,
+                    timeout=15.0,
                 )
                 if poll_resp.status_code != 200:
                     continue
@@ -1201,15 +1153,9 @@ async def generate_inpaint_tryon(
                         generated_img_url = results[0].get("url")
                     break
                 elif task_status in ("FAILED", "CANCELED"):
-                    logger.warning("wanx2.1-imageedit 任务失败，回退至纯白写真生图...")
-                    return await generate_qwen_fashion_lookbook(
-                        outfit_id=outfit_id,
-                        items=items,
-                        model_id=model_id,
-                        scene=scene,
-                        target_style=target_style,
-                        user_id=user_id,
-                    )
+                    msg = poll_data.get("output", {}).get("message", "任务执行失败")
+                    logger.warning(f"wanx2.1-imageedit 任务失败: {msg}")
+                    return _error_result(outfit_id, model_id, f"国内大模型重绘失败: {msg}")
 
             if generated_img_url:
                 dl_resp = await client.get(generated_img_url, timeout=30.0)
@@ -1224,22 +1170,207 @@ async def generate_inpaint_tryon(
                         "engine": "inpaint",
                         "prompt": inpaint_prompt,
                     }
+                else:
+                    return _error_result(outfit_id, model_id, f"下载国内模型生成的图片失败 HTTP {dl_resp.status_code}")
+            else:
+                return _error_result(outfit_id, model_id, "国内模型生图超时，未在时限内生成图片，请重试")
 
     except Exception as e:
-        logger.warning(f"局部重绘换衣执行异常: {e}，自动回退至万相生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        err_detail = _format_exception_msg(e)
+        logger.warning(f"局部重绘换衣执行异常: {err_detail}")
+        return _error_result(outfit_id, model_id, f"国内大模型局部重绘生图异常: {err_detail}")
 
     return _error_result(outfit_id, model_id, "换装生成超时，请稍后重试")
 
 
-# ── 综合统一调度接口 ────────────────────────────────────────────────────────
+# ── 引擎 4：Google Gemini 旗舰多图融合试衣 (gemini-nano-banana-2.1) ───────────
+async def generate_gemini_tryon(
+    outfit_id: str,
+    items: list[dict[str, Any]],
+    model_id: str = "female_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    基于 Google Gemini Nano Banana 2.1 (gemini-nano-banana-2.1) 的多图参考融合试穿。
+    原生支持多达 14 张参考图片同时输入，融合模特形象特征与多件套衣物实物平铺图，由多模态大模型在三维空间中进行精准解构与自然着装。
+    """
+    gemini_key = getattr(settings, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
+        return _error_result(outfit_id, model_id, "未配置 GEMINI_API_KEY，请在 .env 中填入 Google Gemini API Key")
+
+    save_dir = Path("uploads") / "tryon"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    cache_suffix = f"{outfit_id}_{model_id}"
+    if model_id == "custom" and user_id:
+        cache_suffix += f"_{user_id[:8]}"
+    local_filename = f"{cache_suffix}_gemini_v1.png"
+    local_filepath = save_dir / local_filename
+    local_url = f"/uploads/tryon/{local_filename}"
+
+    if local_filepath.exists() and local_filepath.stat().st_size > 5000:
+        logger.info(f"命中 Gemini 试穿缓存: {local_url}")
+        return {
+            "outfit_id": outfit_id,
+            "image_url": local_url,
+            "model_id": model_id,
+            "source": "gemini-nano-banana-2.1",
+            "engine": "gemini",
+            "prompt": "Gemini Multi-Image Reference Fusion Lookbook",
+        }
+
+    # 1. 寻找模特底图
+    model_cfg = _get_model_config(model_id, user_id)
+    local_model_p = Path(model_cfg.get("local_file", ""))
+    if not local_model_p.exists():
+        alt_p = Path("apps/api") / model_cfg.get("local_file", "")
+        if alt_p.exists():
+            local_model_p = alt_p
+
+    import base64
+    inputs: list[dict[str, Any]] = []
+
+    # 构建精准多图参考提示词
+    clothing_parts = []
+    for it in items:
+        name = it.get("name") or it.get("sub_category") or it.get("category", "")
+        col = it.get("primary_color") or it.get("color", "")
+        clothing_parts.append(f"{col} {name}".strip())
+    garments_desc = ", ".join(clothing_parts) if clothing_parts else "specified outfit"
+
+    prompt_text = (
+        f"A masterwork commercial catalog fashion photograph of an authentic model standing in a seamless pure white studio. "
+        f"Reference Image 1 shows the model. Strictly preserve the exact face, identity, body proportions, posture, and natural hairstyle from Reference Image 1. "
+        f"Dress the model in the exact clothing items provided in the subsequent reference images ({garments_desc}). "
+        f"Ensure realistic clothing layering (outerwear cleanly layered over tops, tops tucked or fitted over pants, footwear naturally placed), "
+        f"natural fabric texture and drapery folds, studio high-key soft lighting, 8k resolution, crisp overall focus."
+    )
+    inputs.append({"type": "text", "text": prompt_text})
+
+    # Reference 1: 模特底图
+    if local_model_p.exists():
+        model_bytes = local_model_p.read_bytes()
+        inputs.append({
+            "type": "image",
+            "data": base64.b64encode(model_bytes).decode("utf-8"),
+            "mime_type": "image/jpeg"
+        })
+
+    # Reference 2..N: 各单品平铺实物图
+    for it in items:
+        img_url = it.get("image_url") or it.get("local_path") or ""
+        clean_path_str = str(img_url).lstrip("/")
+        item_p = Path(clean_path_str)
+        if not item_p.exists():
+            item_p = Path("apps/api") / clean_path_str
+        if item_p.exists() and item_p.is_file():
+            raw_bytes = item_p.read_bytes()
+            mime = "image/png" if item_p.suffix.lower() == ".png" else "image/jpeg"
+            inputs.append({
+                "type": "image",
+                "data": base64.b64encode(raw_bytes).decode("utf-8"),
+                "mime_type": mime
+            })
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/interactions?key={gemini_key}"
+    payload = {
+        "model": "gemini-nano-banana-2.1",
+        "input": inputs,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.error(f"Gemini API 调用失败 HTTP {resp.status_code}: {resp.text}")
+                return _error_result(outfit_id, model_id, f"Gemini API 错误: {resp.text[:120]}")
+
+            data = resp.json()
+            output_image = data.get("output_image") or {}
+            img_b64 = output_image.get("data")
+            if not img_b64:
+                for step in data.get("steps", []):
+                    if step.get("type") == "image" and step.get("data"):
+                        img_b64 = step["data"]
+                        break
+
+            if img_b64:
+                img_bytes = base64.b64decode(img_b64)
+                local_filepath.write_bytes(img_bytes)
+                logger.info(f"Gemini 多图融合试穿大片已保存至: {local_url}")
+                return {
+                    "outfit_id": outfit_id,
+                    "image_url": local_url,
+                    "model_id": model_id,
+                    "source": "gemini-nano-banana-2.1",
+                    "engine": "gemini",
+                    "prompt": "Gemini Multi-Image Reference Fusion Lookbook",
+                }
+            else:
+                return _error_result(outfit_id, model_id, "Gemini 未能返回有效图片数据")
+
+    except Exception as e:
+        err_msg = _format_exception_msg(e)
+        logger.error(f"Gemini 试穿生图异常: {err_msg}")
+        return _error_result(outfit_id, model_id, f"Gemini 试穿生成失败: {err_msg}")
+
+
+# ── 综合统一调度接口（国内/国际双轨开放拓展架构） ─────────────────────────
+async def generate_international_multimodal_tryon(
+    outfit_id: str,
+    items: list[dict[str, Any]],
+    model_id: str = "female_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    国际多模态旗舰生图引擎（可配置/扩展服务商：Google Gemini / OpenAI / 等）。
+    默认采用 Google Gemini 原生多图视觉参考融合。
+    """
+    provider = getattr(settings, "INTERNATIONAL_TRYON_PROVIDER", "gemini").lower()
+    logger.info(f"调用国际旗舰多模态引擎 (provider={provider})...")
+    res = await generate_gemini_tryon(
+        outfit_id=outfit_id,
+        items=items,
+        model_id=model_id,
+        scene=scene,
+        target_style=target_style,
+        user_id=user_id,
+    )
+    if "error" not in res.get("source", ""):
+        res["engine"] = "international"
+    return res
+
+
+async def generate_domestic_ai_tryon(
+    outfit_id: str,
+    items: list[dict[str, Any]],
+    model_id: str = "female_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    国内主流 AI 大模型生图引擎（可配置/扩展服务商：阿里通义万相 / 字节跳动火山方舟豆包 / 腾讯混元）。
+    执行局部重绘定格换装（原貌 100% 保持，仅换推荐衣物）。
+    """
+    provider = getattr(settings, "DOMESTIC_TRYON_PROVIDER", "wanx").lower()
+    logger.info(f"调用国内大模型生图引擎 (provider={provider})...")
+    res = await generate_inpaint_tryon(
+        outfit_id=outfit_id,
+        items=items,
+        model_id=model_id,
+        scene=scene,
+        target_style=target_style,
+        user_id=user_id,
+    )
+    if "error" not in res.get("source", ""):
+        res["engine"] = "domestic"
+    return res
+
+
 async def generate_tryon_image(
     outfit_id: str,
     items: list[dict[str, Any]],
@@ -1247,30 +1378,19 @@ async def generate_tryon_image(
     scene: str = "daily",
     target_style: str = "casual",
     model_id: str = "female_1",
-    engine: str = "inpaint",
+    engine: str = "international",
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    生图/试衣统一入口。
-    - engine="inpaint": 通义万相 2.1 局部重绘定格换装（默认推荐，人物动作姿态、背景、头型发型100%保留）
-    - engine="qwen": 阿里通义万相 2.1 旗舰纯白影棚写真（高颜值、纯白空白影棚大片）
-    - engine="aitryon": 阿里百炼 OutfitAnyone Plus 1:1 像素级虚拟试穿（支持自动无缝降级）
-    - model_id="custom": 用户专属个人形象
+    生图/试衣统一入口，精简并规范为两大核心开放生态：
+    1. engine in ('international', 'gemini', 'openai'): 国际旗舰多模态生图（多图参考真实层叠穿搭）
+    2. engine in ('domestic', 'inpaint', 'wanx', 'doubao', 'hunyuan') 或默认: 国内主流大模型生图（原貌定格局部重绘换装）
     """
     if gender == "male" and model_id == "female_1":
         model_id = "male_1"
 
-    if model_id == "custom" or engine == "inpaint":
-        result = await generate_inpaint_tryon(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
-    elif engine == "aitryon":
-        result = await generate_virtual_tryon(
+    if engine in ("international", "gemini", "google", "openai"):
+        result = await generate_international_multimodal_tryon(
             outfit_id=outfit_id,
             items=items,
             model_id=model_id,
@@ -1279,7 +1399,7 @@ async def generate_tryon_image(
             user_id=user_id,
         )
     else:
-        result = await generate_qwen_fashion_lookbook(
+        result = await generate_domestic_ai_tryon(
             outfit_id=outfit_id,
             items=items,
             model_id=model_id,

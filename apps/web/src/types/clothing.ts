@@ -167,7 +167,7 @@ export interface TryOnRequest {
   gender?: string;
   scene?: string;
   target_style?: string;
-  engine?: 'inpaint' | 'qwen' | 'aitryon';
+  engine?: 'international' | 'domestic' | 'gemini' | 'inpaint' | 'qwen' | 'aitryon';
 }
 
 /** AI 虚拟试穿与生图结果 */

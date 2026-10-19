@@ -25,11 +25,19 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: list[str] = ["*"]
 
-    # --- AI Model ---
+    # --- AI Model & Multi-Provider Image Generation ---
     AI_API_KEY: str = ""
     AI_API_BASE_URL: str = "https://api.openai.com/v1"
     AI_VISION_MODEL: str = "gpt-4o"
     AI_CHAT_MODEL: str = "gpt-4o-mini"
+    GEMINI_API_KEY: str = ""
+
+    # 多厂商 AI 视觉生图扩展引擎配置 (国内/国际可插拔架构)
+    DOMESTIC_TRYON_PROVIDER: str = "wanx"        # 国内引擎提供商: wanx (阿里通义万相) | doubao (字节火山方舟) | hunyuan (腾讯混元)
+    INTERNATIONAL_TRYON_PROVIDER: str = "gemini" # 国际引擎提供商: gemini (Google Gemini 多模态) | openai (OpenAI 多模态)
+    DASHSCOPE_API_KEY: str = ""                  # 阿里百炼 API Key (留空时默认取 AI_API_KEY)
+    VOLCENGINE_API_KEY: str = ""                 # 字节跳动火山方舟 API Key
+    HUNYUAN_API_KEY: str = ""                    # 腾讯混元 API Key
 
     # --- Weather API ---
     WEATHER_API_KEY: str = ""

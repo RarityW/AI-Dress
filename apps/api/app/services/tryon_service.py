@@ -62,9 +62,35 @@ _OSS_CACHE: dict[str, str] = {}
 
 
 # ── 用户自定义模特管理 ──────────────────────────────────────────────────────
+def _resolve_existing_path(path_str: str) -> Optional[Path]:
+    """多基准目录路径解析，兼容从项目根目录与 apps/api 目录运行。"""
+    if not path_str:
+        return None
+    p = Path(path_str)
+    if p.exists():
+        return p
+    clean = path_str.replace("\\", "/").lstrip("/")
+    candidate_roots = [
+        Path("."),
+        Path("apps/api"),
+        Path(__file__).resolve().parent.parent.parent,
+        Path(__file__).resolve().parent.parent.parent.parent,
+    ]
+    for r in candidate_roots:
+        cand = r / clean
+        if cand.exists():
+            return cand
+    return None
+
+
 def get_user_custom_model_dir(user_id: str) -> Path:
-    """获取用户自定义模特存储目录。"""
+    """获取用户自定义模特存储目录（多路径自动探测）。"""
     user_str = str(user_id).strip() or "default_user"
+    for cand_root in [Path("apps/api/uploads/user_models"), Path("uploads/user_models")]:
+        d = cand_root / user_str
+        if d.exists():
+            return d
+    # 若均未创建，优先在当前工作目录的 uploads/user_models 下创建
     p = Path("uploads") / "user_models" / user_str
     p.mkdir(parents=True, exist_ok=True)
     return p
@@ -80,12 +106,16 @@ def get_user_custom_model(user_id: Optional[str]) -> Optional[dict[str, Any]]:
         try:
             with open(meta_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            local_p = Path(data.get("local_file", ""))
-            if not local_p.exists():
-                alt_p = Path("apps/api") / data.get("local_file", "")
-                if alt_p.exists():
-                    local_p = alt_p
-            if local_p.exists():
+            local_p = _resolve_existing_path(data.get("local_file", ""))
+            if not local_p:
+                # 尝试在 user_dir 查找
+                for f_name in ["custom_model_white.png", "custom_model.jpg", "custom_model.png"]:
+                    cand = user_dir / f_name
+                    if cand.exists():
+                        local_p = cand
+                        break
+            if local_p and local_p.exists():
+                data["local_file"] = str(local_p).replace("\\", "/")
                 return data
         except Exception as e:
             logger.warning(f"读取用户自定义模特配置失败: {e}")
@@ -243,7 +273,7 @@ async def generate_clean_background_model(
                 "X-DashScope-Async": "enable",
             }
 
-            async with httpx.AsyncClient(timeout=35.0) as client:
+            async with httpx.AsyncClient(timeout=35.0, trust_env=False) as client:
                 submit_resp = await client.post(
                     DASHSCOPE_SYNTHESIS_URL,
                     headers=headers,
@@ -458,7 +488,7 @@ async def upload_file_to_dashscope_oss(
         return None
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
             # 1. 获取临时上传策略
             policy_resp = await client.get(
                 DASHSCOPE_UPLOADS_URL,
@@ -745,7 +775,7 @@ async def generate_qwen_fashion_lookbook(
                         }
 
             except Exception as e:
-                err_detail = _format_exception_msg(e)
+                err_detail = _format_exception_msg(e, service_name="通义万相")
                 logger.error(f"{model_name} 生图异常: {err_detail}")
                 last_err = err_detail
 
@@ -847,7 +877,7 @@ async def generate_virtual_tryon(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
+        async with httpx.AsyncClient(timeout=45.0, trust_env=False) as client:
             submit_resp = await client.post(
                 DASHSCOPE_SYNTHESIS_URL,
                 headers=headers,
@@ -906,14 +936,14 @@ async def generate_virtual_tryon(
                 return _error_result(outfit_id, model_id, "1:1 像素试穿超时，请稍后重试")
 
     except Exception as e:
-        err_detail = _format_exception_msg(e)
+        err_detail = _format_exception_msg(e, service_name="阿里百炼")
         logger.warning(f"虚拟试穿执行异常: {err_detail}")
         return _error_result(outfit_id, model_id, f"虚拟试穿执行异常: {err_detail}")
 
     return _error_result(outfit_id, model_id, "试穿生成超时，请稍后重试")
 
 
-def _format_exception_msg(e: Any) -> str:
+def _format_exception_msg(e: Any, service_name: str = "AI 生图服务") -> str:
     """提取清晰易懂的异常说明。"""
     err_str = str(e).strip()
     cause_str = str(getattr(e, "__cause__", "")).strip() if getattr(e, "__cause__", None) else ""
@@ -924,11 +954,11 @@ def _format_exception_msg(e: Any) -> str:
         "ConnectTimeout", "ReadTimeout"
     ]
     if any(k in full_detail or k in str(type(e)) for k in network_keywords):
-        return "网络连接被切断 (无法直连阿里百炼生图服务，请在 Clash/VPN 中将模式切换为【规则模式】或关闭全局代理)"
+        return f"网络连接被切断 (无法连接国内 {service_name}。若开启了 Clash/VPN 全局代理，请在代理客户端中切换为【规则模式】或关闭全局代理以便直连国内服务器)"
     if "401" in full_detail or "InvalidApiKey" in full_detail:
-        return "API Key 无效或未授权，请检查 .env 配置"
-    if "429" in full_detail or "Throttling" in full_detail:
-        return "API 调用受限或超出频率，请稍后再试"
+        return f"{service_name} API Key 无效或未授权，请检查 .env 配置"
+    if "429" in full_detail or "Throttling" in full_detail or "Rate limit" in full_detail:
+        return f"{service_name} API 调用受限或超出频率/配额限制 (429)"
     return full_detail[:120]
 
 
@@ -1117,7 +1147,7 @@ async def generate_inpaint_tryon(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
+        async with httpx.AsyncClient(timeout=45.0, trust_env=False) as client:
             submit_resp = await client.post(
                 DASHSCOPE_SYNTHESIS_URL,
                 headers=headers,
@@ -1183,8 +1213,170 @@ async def generate_inpaint_tryon(
     return _error_result(outfit_id, model_id, "换装生成超时，请稍后重试")
 
 
-# ── 引擎 4：Google Gemini 旗舰多图融合试衣 (gemini-nano-banana-2.1) ───────────
-async def generate_gemini_tryon(
+# ── 引擎 4：字节跳动火山方舟即梦 Seedream 旗舰时尚穿搭画报 (doubao-seedream-4-0-20260415) ───
+def _compress_and_encode_image(file_path: Path, max_dim: int = 768, quality: int = 85) -> Optional[str]:
+    """将本地图片压缩至适中尺寸并编码为 Base64，兼顾高保真细节与极速网络传输。"""
+    try:
+        from PIL import Image
+        import io
+        import base64
+        with Image.open(file_path) as img:
+            rgb_img = img.convert("RGB")
+            w, h = rgb_img.size
+            if max(w, h) > max_dim:
+                scale = max_dim / max(w, h)
+                rgb_img = rgb_img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            rgb_img.save(buf, format="JPEG", quality=quality)
+            return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        logger.warning(f"图片压缩编码失败: {file_path} - {e}")
+        return None
+
+
+def _clean_clothing_description(desc: str) -> str:
+    """去除平铺白底、棚拍等杂质描述词，提取纯净服装描述。"""
+    if not desc:
+        return ""
+    import re
+    cleaned = re.sub(r"[\(（][^\)）]*(?:底|平铺|展平|去杂|棚拍|纯白|展示)[^\)）]*[\)）]", "", desc)
+    return cleaned.strip()
+
+
+def _get_item_fashion_desc(item: dict[str, Any]) -> str:
+    """提取单品的丰富外观描述（支持直接描述、VLM描述与智能保底）。"""
+    desc = item.get("description") or ""
+    if desc:
+        cleaned = _clean_clothing_description(desc)
+        if cleaned:
+            return cleaned
+
+    color_zh_map = {
+        "white": "白色", "black": "深黑色", "blue": "深蓝色", "navy": "藏青色",
+        "gray": "经典灰色", "grey": "经典灰色", "beige": "米色", "khaki": "卡其色",
+        "brown": "棕色", "red": "红色", "green": "墨绿色", "yellow": "黄色",
+        "pink": "淡粉色", "purple": "紫色", "orange": "橘色", "denim": "水洗牛仔蓝"
+    }
+
+    color = item.get("primary_color", "") or item.get("color", "")
+    color_zh = color_zh_map.get(str(color).lower(), color)
+    subcat = item.get("sub_category") or item.get("name") or item.get("category", "")
+    mat = item.get("material", "")
+    pattern = item.get("pattern", "")
+
+    tokens = [t for t in [color_zh, pattern, mat, subcat] if t and t != "none"]
+    return "".join(tokens) or subcat or "时尚单品"
+
+
+def _build_seedream_fashion_prompt(
+    items: list[dict[str, Any]],
+    model_id: str = "female_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+    user_id: Optional[str] = None,
+    top_img_idx: Optional[int] = None,
+    bottom_img_idx: Optional[int] = None,
+    top_item: Optional[dict[str, Any]] = None,
+    bottom_item: Optional[dict[str, Any]] = None,
+) -> str:
+    """
+    为字节跳动即梦/豆包 Seedream 生图模型构建专业商业级多图参考时尚穿搭提示词。
+    锁定出镜人物面容五官、发型与眼镜，彻底替换去除原有旧衣服图案/LOGO，1:1 精准上身推荐单品。
+    """
+    model_cfg = _get_model_config(model_id, user_id=user_id)
+    gender = model_cfg.get("gender", "female")
+
+    # 1. 模特人像与身份严格锁定约束
+    if model_id == "custom":
+        hairstyle = model_cfg.get("hairstyle") or "保持原图自然清爽发型与自然发色"
+        if top_img_idx:
+            identity_desc = (
+                f"专业商业人像服装换装摄影。图1为出镜人物。严格保持图1人物的真实面容五官、发型发色、眼镜、神态、身材体态与骨骼比例特征100%一致，"
+                f"{hairstyle}，严禁更改人物长相、严禁摘除或更改眼镜、严禁修改发型发色与体型体态。\n"
+                f"【核心换装要求】：必须彻底脱掉并替换图1人物身上原本穿着的原有旧衣服，严禁残留原图衣服上的任何旧LOGO、旧印花、旧字母或原有任何图案！"
+            )
+        else:
+            identity_desc = (
+                f"专业商业人像服装换装摄影。严格保持参考图片中人物的真实面容五官、发型发色、眼镜、神态、身材体态与骨骼比例特征100%一致，"
+                f"{hairstyle}，严禁更改人物长相、严禁摘除或更改眼镜、严禁修改发型发色与脸型。\n"
+                f"【核心换装要求】：必须彻底脱掉并替换参考图片中人物原本穿着的原有旧衣服，严禁残留原图衣服上的任何旧LOGO、旧印花或原有任何图案！"
+            )
+    else:
+        if gender == "female":
+            model_desc = "优雅知性的东亚年轻女性时尚模特，五官清秀精致，真实细腻皮肤质感，黑色齐肩微卷发，体态纤细匀称"
+        else:
+            model_desc = "阳光俊朗的东亚年轻男性时尚模特，清爽利落黑色短发，轮廓分明干净的面容，真实细腻皮肤质感，修长匀称体态"
+        
+        if top_img_idx:
+            identity_desc = (
+                f"专业商业人像服装模特摄影。图1为出镜模特。严格保持图1中{model_desc}的真实面容五官、发型与身形体态特征一致。\n"
+                f"【核心换装要求】：必须彻底脱掉并替换图1模特原本穿着的旧衣服，严禁残留原有任何旧LOGO或图案。"
+            )
+        else:
+            identity_desc = (
+                f"专业商业人像服装模特摄影。严格保持参考图片中{model_desc}的真实面容五官、发型与身形体态特征一致。\n"
+                f"【核心换装要求】：必须彻底替换参考图片中的原有衣服，换上指定新搭配。"
+            )
+
+    # 2. 场景与影棚环境
+    scene_map = {
+        "daily": "纯白色高端极简无缝室内影棚，柔和纯净高调光，背景纯净无杂物",
+        "work": "都市高端商务极简影棚背景，柔和侧逆光，高级冷淡色调，干净纯粹",
+        "dating": "温馨明亮的高级现代室内，柔和温暖自然漫反射光，松弛典雅",
+        "sports": "开阔极简运动空间浅色背景，明亮通透清爽光线，充满活力",
+    }
+    bg_desc = scene_map.get(scene, "纯白无缝商业摄影单色影棚，柔和纯净高调光，无杂物无干扰")
+
+    # 3. 搭配单品结构化层叠描述
+    layer_order = {"coat": 1, "outerwear": 1, "top": 2, "bottom": 3, "shoes": 4, "accessory": 5}
+    sorted_items = sorted(
+        items,
+        key=lambda x: layer_order.get(str(x.get("category", "")).lower(), 99)
+    )
+
+    outfit_descs = []
+    for it in sorted_items:
+        desc = _get_item_fashion_desc(it)
+        if desc:
+            outfit_descs.append(desc)
+    full_outfit_str = "、".join(outfit_descs) if outfit_descs else "一套剪裁合身时尚的高级服装"
+
+    if top_img_idx and top_item:
+        top_name = _get_item_fashion_desc(top_item)
+        garment_inst = (
+            f"为人物换上图{top_img_idx}中的服装：{top_name}。必须精准1:1还原图{top_img_idx}单品的版型剪裁、面料色彩以及衣物上的图案印花文字细节。"
+        )
+        if bottom_img_idx and bottom_item:
+            bottom_name = _get_item_fashion_desc(bottom_item)
+            garment_inst += (
+                f"下身换上图{bottom_img_idx}中的{bottom_name}，精准还原图{bottom_img_idx}的版型与色彩材质。"
+            )
+    else:
+        garment_inst = f"为人物换上一套全新高级穿搭组合：整齐协调地穿着{full_outfit_str}。"
+
+    # 4. 服装质感与层叠逻辑约束
+    garment_craft = (
+        "服装剪裁利落合身，完美贴合身材体态，外搭与内搭自然交叠显露层次，腰身比例自然，"
+        "衣服面料纹理细腻逼真，自然柔和的垂坠褶皱与走线质感，领口与袖口细节自然平服"
+    )
+
+    # 5. 摄影参数
+    photography_spec = (
+        "顶级国际时尚杂志商业 Lookbook，哈苏相机 85mm 人像定焦拍摄，全身构图，全景立姿全身照，"
+        "顶级商业布光，轮廓光分明，面容立体清晰，8K 超高清分辨率，电影级光影质感，极度逼真写实，大师级调色"
+    )
+    restriction_str = "画面干净整洁，严禁多余的背包、帽子、墨镜或手提包配件，严禁修改人物五官眼镜与体态"
+
+    prompt = (
+        f"{identity_desc}\n"
+        f"{garment_inst}\n"
+        f"全套穿搭清单：{full_outfit_str}。\n"
+        f"{garment_craft}。{bg_desc}。{photography_spec}。{restriction_str}。"
+    )
+    return prompt
+
+
+async def generate_seedream_tryon(
     outfit_id: str,
     items: list[dict[str, Any]],
     model_id: str = "female_1",
@@ -1193,157 +1385,182 @@ async def generate_gemini_tryon(
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    基于 Google Gemini Nano Banana 2.1 (gemini-nano-banana-2.1) 的多图参考融合试穿。
-    原生支持多达 14 张参考图片同时输入，融合模特形象特征与多件套衣物实物平铺图，由多模态大模型在三维空间中进行精准解构与自然着装。
+    基于字节跳动火山方舟即梦 Seedream (doubao-seedream-4-0-20260415) 的多图参考商业穿搭换装生图。
+    支持同时传入人物底图 (图1) 与衣物平铺底图 (图2上装/图3下装)，彻底去除旧衣物印花图案，1:1 精准换装。
     """
-    gemini_key = getattr(settings, "GEMINI_API_KEY", "") or os.environ.get("GEMINI_API_KEY", "")
-    if not gemini_key:
-        return _error_result(outfit_id, model_id, "未配置 GEMINI_API_KEY，请在 .env 中填入 Google Gemini API Key")
-
     save_dir = Path("uploads") / "tryon"
     save_dir.mkdir(parents=True, exist_ok=True)
     cache_suffix = f"{outfit_id}_{model_id}"
     if model_id == "custom" and user_id:
         cache_suffix += f"_{user_id[:8]}"
-    local_filename = f"{cache_suffix}_gemini_v1.png"
+    local_filename = f"{cache_suffix}_seedream_v3.png"
     local_filepath = save_dir / local_filename
     local_url = f"/uploads/tryon/{local_filename}"
 
+    model_name = getattr(settings, "VOLCENGINE_SEEDREAM_MODEL", "doubao-seedream-4-0-20260415")
+
     if local_filepath.exists() and local_filepath.stat().st_size > 5000:
-        logger.info(f"命中 Gemini 试穿缓存: {local_url}")
+        logger.info(f"命中 Seedream 试穿缓存: {local_url}")
         return {
             "outfit_id": outfit_id,
             "image_url": local_url,
             "model_id": model_id,
-            "source": "gemini-nano-banana-2.1",
-            "engine": "gemini",
-            "prompt": "Gemini Multi-Image Reference Fusion Lookbook",
+            "source": model_name,
+            "engine": "seedream",
+            "prompt": "Seedream Fashion Lookbook",
         }
 
-    # 1. 寻找模特底图
-    model_cfg = _get_model_config(model_id, user_id)
-    local_model_p = Path(model_cfg.get("local_file", ""))
-    if not local_model_p.exists():
-        alt_p = Path("apps/api") / model_cfg.get("local_file", "")
-        if alt_p.exists():
-            local_model_p = alt_p
+    api_key = getattr(settings, "VOLCENGINE_API_KEY", "") or os.environ.get("VOLCENGINE_API_KEY", "")
+    if not api_key:
+        return _error_result(outfit_id, model_id, "未配置 VOLCENGINE_API_KEY，请在 .env 中填入火山方舟 API Key")
 
-    import base64
-    inputs: list[dict[str, Any]] = []
+    # 1. 准备多图参考：图1 (模特底图)
+    images_payload: list[str] = []
+    model_cfg = _get_model_config(model_id, user_id=user_id)
+    local_model_path = _resolve_existing_path(model_cfg.get("local_file", ""))
+    if local_model_path and local_model_path.exists():
+        person_b64 = _compress_and_encode_image(local_model_path, max_dim=768, quality=88)
+        if person_b64:
+            images_payload.append(person_b64)
+            logger.info(f"Seedream 注入模特底图 (图1): {local_model_path}")
 
-    # 构建精准多图参考提示词
-    clothing_parts = []
-    for it in items:
-        name = it.get("name") or it.get("sub_category") or it.get("category", "")
-        col = it.get("primary_color") or it.get("color", "")
-        clothing_parts.append(f"{col} {name}".strip())
-    garments_desc = ", ".join(clothing_parts) if clothing_parts else "specified outfit"
-
-    prompt_text = (
-        f"A masterwork commercial catalog fashion photograph of an authentic model standing in a seamless pure white studio. "
-        f"Reference Image 1 shows the model. Strictly preserve the exact face, identity, body proportions, posture, and natural hairstyle from Reference Image 1. "
-        f"Dress the model in the exact clothing items provided in the subsequent reference images ({garments_desc}). "
-        f"Ensure realistic clothing layering (outerwear cleanly layered over tops, tops tucked or fitted over pants, footwear naturally placed), "
-        f"natural fabric texture and drapery folds, studio high-key soft lighting, 8k resolution, crisp overall focus."
+    # 2. 准备多图参考：图2 (上装/外套平铺底图), 图3 (下装平铺底图)
+    layer_order = {"coat": 1, "outerwear": 1, "top": 2, "bottom": 3, "shoes": 4}
+    sorted_items = sorted(
+        items,
+        key=lambda x: layer_order.get(str(x.get("category", "")).lower(), 99)
     )
-    inputs.append({"type": "text", "text": prompt_text})
 
-    # Reference 1: 模特底图
-    if local_model_p.exists():
-        model_bytes = local_model_p.read_bytes()
-        inputs.append({
-            "type": "image",
-            "data": base64.b64encode(model_bytes).decode("utf-8"),
-            "mime_type": "image/jpeg"
-        })
+    top_item = None
+    bottom_item = None
+    for it in sorted_items:
+        cat = str(it.get("category", "")).lower()
+        if cat in ("coat", "outerwear", "top") and not top_item:
+            top_item = it
+        elif cat == "bottom" and not bottom_item:
+            bottom_item = it
 
-    # Reference 2..N: 各单品平铺实物图
-    for it in items:
-        img_url = it.get("image_url") or it.get("local_path") or ""
-        clean_path_str = str(img_url).lstrip("/")
-        item_p = Path(clean_path_str)
-        if not item_p.exists():
-            item_p = Path("apps/api") / clean_path_str
-        if item_p.exists() and item_p.is_file():
-            raw_bytes = item_p.read_bytes()
-            mime = "image/png" if item_p.suffix.lower() == ".png" else "image/jpeg"
-            inputs.append({
-                "type": "image",
-                "data": base64.b64encode(raw_bytes).decode("utf-8"),
-                "mime_type": mime
-            })
+    top_idx = None
+    bottom_idx = None
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/interactions?key={gemini_key}"
-    payload = {
-        "model": "gemini-nano-banana-2.1",
-        "input": inputs,
-    }
+    if top_item and top_item.get("image_url"):
+        top_path = _resolve_existing_path(top_item["image_url"])
+        if top_path and top_path.exists():
+            top_b64 = _compress_and_encode_image(top_path, max_dim=768, quality=85)
+            if top_b64:
+                images_payload.append(top_b64)
+                top_idx = len(images_payload)
+                logger.info(f"Seedream 注入上装平铺底图 (图{top_idx}): {top_path}")
 
-    try:
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post(url, json=payload)
-            if resp.status_code != 200:
-                logger.error(f"Gemini API 调用失败 HTTP {resp.status_code}: {resp.text}")
-                return _error_result(outfit_id, model_id, f"Gemini API 错误: {resp.text[:120]}")
+    if bottom_item and bottom_item.get("image_url") and len(images_payload) < 3:
+        bottom_path = _resolve_existing_path(bottom_item["image_url"])
+        if bottom_path and bottom_path.exists():
+            bottom_b64 = _compress_and_encode_image(bottom_path, max_dim=768, quality=85)
+            if bottom_b64:
+                images_payload.append(bottom_b64)
+                bottom_idx = len(images_payload)
+                logger.info(f"Seedream 注入下装平铺底图 (图{bottom_idx}): {bottom_path}")
 
-            data = resp.json()
-            output_image = data.get("output_image") or {}
-            img_b64 = output_image.get("data")
-            if not img_b64:
-                for step in data.get("steps", []):
-                    if step.get("type") == "image" and step.get("data"):
-                        img_b64 = step["data"]
-                        break
-
-            if img_b64:
-                img_bytes = base64.b64decode(img_b64)
-                local_filepath.write_bytes(img_bytes)
-                logger.info(f"Gemini 多图融合试穿大片已保存至: {local_url}")
-                return {
-                    "outfit_id": outfit_id,
-                    "image_url": local_url,
-                    "model_id": model_id,
-                    "source": "gemini-nano-banana-2.1",
-                    "engine": "gemini",
-                    "prompt": "Gemini Multi-Image Reference Fusion Lookbook",
-                }
-            else:
-                return _error_result(outfit_id, model_id, "Gemini 未能返回有效图片数据")
-
-    except Exception as e:
-        err_msg = _format_exception_msg(e)
-        logger.error(f"Gemini 试穿生图异常: {err_msg}")
-        return _error_result(outfit_id, model_id, f"Gemini 试穿生成失败: {err_msg}")
-
-
-# ── 综合统一调度接口（国内/国际双轨开放拓展架构） ─────────────────────────
-async def generate_international_multimodal_tryon(
-    outfit_id: str,
-    items: list[dict[str, Any]],
-    model_id: str = "female_1",
-    scene: str = "daily",
-    target_style: str = "casual",
-    user_id: Optional[str] = None,
-) -> dict[str, Any]:
-    """
-    国际多模态旗舰生图引擎（可配置/扩展服务商：Google Gemini / OpenAI / 等）。
-    默认采用 Google Gemini 原生多图视觉参考融合。
-    """
-    provider = getattr(settings, "INTERNATIONAL_TRYON_PROVIDER", "gemini").lower()
-    logger.info(f"调用国际旗舰多模态引擎 (provider={provider})...")
-    res = await generate_gemini_tryon(
-        outfit_id=outfit_id,
+    # 3. 构造提示词
+    prompt = _build_seedream_fashion_prompt(
         items=items,
         model_id=model_id,
         scene=scene,
         target_style=target_style,
         user_id=user_id,
+        top_img_idx=top_idx,
+        bottom_img_idx=bottom_idx,
+        top_item=top_item,
+        bottom_item=bottom_item,
     )
-    if "error" not in res.get("source", ""):
-        res["engine"] = "international"
-    return res
+    logger.info(f"Seedream 多图增强 Prompt: {prompt}")
+
+    base_url = getattr(settings, "VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
+    url = f"{base_url}/images/generations"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "prompt": prompt,
+        "response_format": "url",
+        "size": "1024x1024",
+    }
+    if images_payload:
+        payload["image"] = images_payload if len(images_payload) > 1 else images_payload[0]
+
+    try:
+        # 国内直连 (trust_env=False 彻底杜绝本地 VPN/Clash 误拦截国内方舟 API，超时放宽至 90s)
+        async with httpx.AsyncClient(timeout=90.0, trust_env=False) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                logger.error(f"Seedream API 调用失败 HTTP {resp.status_code}: {resp.text}")
+                try:
+                    err_json = resp.json().get("error", {})
+                    err_code = err_json.get("code", "")
+                    msg = err_json.get("message", "") or resp.text[:120]
+                except Exception:
+                    err_code = ""
+                    msg = resp.text[:120]
+
+                if err_code == "ModelNotOpen":
+                    return _error_result(
+                        outfit_id,
+                        model_id,
+                        f"模型未开通 (ModelNotOpen)：您的账号尚未开通 {model_name}。请前往【火山方舟控制台 -> 开通管理】一键开通，或在【在线推理】中创建接入点后将 ep-xxxx 填入配置。"
+                    )
+                if "NotFound" in err_code:
+                    return _error_result(
+                        outfit_id,
+                        model_id,
+                        f"模型/接入点不存在 (404)：火山方舟未找到 {model_name}。请前往【火山方舟控制台 -> 在线推理】查看并复制您的 ep-xxxx 接入点 ID。"
+                    )
+                return _error_result(outfit_id, model_id, f"Seedream API 错误 (HTTP {resp.status_code}): {msg}")
+
+            data = resp.json()
+            images_data = data.get("data", [])
+            img_url = ""
+            if images_data and isinstance(images_data, list):
+                img_url = images_data[0].get("url") or ""
+
+            if img_url:
+                for _retry in range(3):
+                    try:
+                        dl_resp = await client.get(img_url, timeout=30.0)
+                        if dl_resp.status_code == 200:
+                            local_filepath.write_bytes(dl_resp.content)
+                            # 双向同步至 apps/api/uploads/tryon
+                            alt_p = Path("apps/api/uploads/tryon") / local_filename
+                            if alt_p != local_filepath:
+                                try:
+                                    alt_p.parent.mkdir(parents=True, exist_ok=True)
+                                    alt_p.write_bytes(dl_resp.content)
+                                except Exception:
+                                    pass
+                            logger.info(f"Seedream 多图参考时尚大片已保存至: {local_url}")
+                            return {
+                                "outfit_id": outfit_id,
+                                "image_url": local_url,
+                                "model_id": model_id,
+                                "source": model_name,
+                                "engine": "seedream",
+                                "prompt": prompt[:120] + "...",
+                            }
+                    except Exception as dl_err:
+                        logger.warning(f"下载 Seedream 生成图重试 ({_retry+1}/3): {dl_err}")
+                        await asyncio.sleep(1.0)
+
+            return _error_result(outfit_id, model_id, "Seedream 未能返回有效图片链接或下载超时")
+
+    except Exception as e:
+        err_msg = _format_exception_msg(e, service_name="字节即梦 (Seedream)")
+        logger.error(f"Seedream 试穿生图异常: {err_msg}")
+        return _error_result(outfit_id, model_id, f"Seedream 试穿生成失败: {err_msg}")
 
 
+# ── 综合统一调度接口（国内主流双引擎架构） ─────────────────────────
 async def generate_domestic_ai_tryon(
     outfit_id: str,
     items: list[dict[str, Any]],
@@ -1353,11 +1570,11 @@ async def generate_domestic_ai_tryon(
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    国内主流 AI 大模型生图引擎（可配置/扩展服务商：阿里通义万相 / 字节跳动火山方舟豆包 / 腾讯混元）。
-    执行局部重绘定格换装（原貌 100% 保持，仅换推荐衣物）。
+    国内主流 AI 局部重绘定格换装（默认采用阿里通义万相原貌换装）。
+    执行局部重绘换装（面容、发型、姿态与背景 100% 保持，仅换推荐衣物）。
     """
     provider = getattr(settings, "DOMESTIC_TRYON_PROVIDER", "wanx").lower()
-    logger.info(f"调用国内大模型生图引擎 (provider={provider})...")
+    logger.info(f"调用国内大模型局部重绘引擎 (provider={provider})...")
     res = await generate_inpaint_tryon(
         outfit_id=outfit_id,
         items=items,
@@ -1367,7 +1584,7 @@ async def generate_domestic_ai_tryon(
         user_id=user_id,
     )
     if "error" not in res.get("source", ""):
-        res["engine"] = "domestic"
+        res["engine"] = "wanx"
     return res
 
 
@@ -1378,19 +1595,19 @@ async def generate_tryon_image(
     scene: str = "daily",
     target_style: str = "casual",
     model_id: str = "female_1",
-    engine: str = "international",
+    engine: str = "seedream",
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    生图/试衣统一入口，精简并规范为两大核心开放生态：
-    1. engine in ('international', 'gemini', 'openai'): 国际旗舰多模态生图（多图参考真实层叠穿搭）
-    2. engine in ('domestic', 'inpaint', 'wanx', 'doubao', 'hunyuan') 或默认: 国内主流大模型生图（原貌定格局部重绘换装）
+    生图/试衣统一入口（精简为国内两大主流引擎）：
+    1. engine in ('seedream', 'doubao', 'volcengine'): 字节跳动火山方舟即梦 Seedream 旗舰时尚穿搭大片
+    2. engine in ('wanx', 'inpaint', 'domestic') 或其他: 阿里通义万相原貌局部重绘定格换装
     """
     if gender == "male" and model_id == "female_1":
         model_id = "male_1"
 
-    if engine in ("international", "gemini", "google", "openai"):
-        result = await generate_international_multimodal_tryon(
+    if engine in ("seedream", "doubao", "volcengine"):
+        result = await generate_seedream_tryon(
             outfit_id=outfit_id,
             items=items,
             model_id=model_id,

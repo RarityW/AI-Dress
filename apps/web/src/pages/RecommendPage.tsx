@@ -171,7 +171,7 @@ export default function RecommendPage() {
   // 预设模特图与生图引擎状态
   const [presetModels, setPresetModels] = useState<PresetModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string>('female_1');
-  const [selectedEngine, setSelectedEngine] = useState<'international' | 'domestic' | 'gemini' | 'inpaint'>('international');
+  const [selectedEngine, setSelectedEngine] = useState<'seedream' | 'wanx' | 'inpaint' | 'domestic'>('seedream');
   const [modelGenderFilter, setModelGenderFilter] = useState<'all' | 'female' | 'male'>('all');
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
@@ -296,7 +296,7 @@ export default function RecommendPage() {
   const [tryOnSource, setTryOnSource] = useState<Record<string, string>>({});
   const [tryOnEngine, setTryOnEngine] = useState<Record<string, string>>({});
 
-  const handleGenerateTryOn = async (outfit: OutfitRecommendation, engineOverride?: 'international' | 'domestic' | 'gemini' | 'inpaint') => {
+  const handleGenerateTryOn = async (outfit: OutfitRecommendation, engineOverride?: 'seedream' | 'wanx' | 'inpaint' | 'domestic') => {
     const outfitId = outfit.outfit_id;
     const engineToUse = engineOverride || selectedEngine;
     setSelectedEngine(engineToUse);
@@ -307,11 +307,13 @@ export default function RecommendPage() {
       const resp = await generateTryOn({
         outfit_id: outfitId,
         items: outfit.items.map((i) => ({
+          id: i.id,
           category: i.category,
           sub_category: i.sub_category,
           primary_color: i.primary_color,
           material: (i as any).material,
           image_url: i.image_url,
+          description: i.description,
         })),
         model_id: selectedModelId,
         scene,
@@ -1110,15 +1112,15 @@ export default function RecommendPage() {
                                 <span className="text-sm font-bold text-gray-900">
                                   AI 穿搭上身效果
                                 </span>
-                                {(tryOnEngine[outfit.outfit_id] === 'international' || tryOnEngine[outfit.outfit_id] === 'gemini' || tryOnSource[outfit.outfit_id]?.includes('gemini')) ? (
-                                  <span className="text-[11px] font-bold text-blue-700 bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                {(tryOnEngine[outfit.outfit_id] === 'seedream' || tryOnSource[outfit.outfit_id]?.includes('seedream') || tryOnSource[outfit.outfit_id]?.includes('doubao')) ? (
+                                  <span className="text-[11px] font-bold text-purple-700 bg-gradient-to-r from-purple-100 to-indigo-100 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
                                     <span>✨</span>
-                                    <span>国际旗舰多模态 (Gemini · 真实多件层叠)</span>
+                                    <span>字节即梦 Seedream (1:1真人锁脸·画报级时尚换装)</span>
                                   </span>
                                 ) : (
                                   <span className="text-[11px] font-bold text-emerald-700 bg-gradient-to-r from-emerald-100 to-teal-100 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
                                     <span>🌟</span>
-                                    <span>国内大模型换装 (通义/豆包/混元 · 原貌定格)</span>
+                                    <span>阿里通义万相 (原貌定格局部换装)</span>
                                   </span>
                                 )}
                                 {tryOnSource[outfit.outfit_id] === 'cache' && (
@@ -1150,23 +1152,23 @@ export default function RecommendPage() {
                                 <div className="flex items-center gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={() => handleGenerateTryOn(outfit, 'international')}
+                                    onClick={() => handleGenerateTryOn(outfit, 'seedream')}
                                     disabled={tryOnLoading[outfit.outfit_id]}
-                                    title="国际旗舰多模态大模型（支持 Google Gemini / OpenAI 等）多图层叠试穿"
-                                    className="text-xs text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                                    title="字节跳动火山方舟即梦 Seedream 4.0 旗舰时尚穿搭画报大片（1:1锁脸换装）"
+                                    className="text-xs text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
                                   >
                                     <Sparkles className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
-                                    <span>国际旗舰 (Gemini)</span>
+                                    <span>即梦 Seedream</span>
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleGenerateTryOn(outfit, 'domestic')}
+                                    onClick={() => handleGenerateTryOn(outfit, 'wanx')}
                                     disabled={tryOnLoading[outfit.outfit_id]}
-                                    title="国内主流大模型（阿里通义万相 / 字节豆包 / 腾讯混元等）原貌定格换装"
+                                    title="阿里通义万相原貌定格局部重绘换装（面容、发型、身姿动作与背景 100% 保持）"
                                     className="text-xs text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
                                   >
                                     <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
-                                    <span>国内大模型</span>
+                                    <span>通义局部重绘</span>
                                   </button>
                                 </div>
                               </div>
@@ -1194,9 +1196,9 @@ export default function RecommendPage() {
                               </p>
                             )}
                             <p className="text-center text-xs text-gray-500 leading-relaxed font-medium">
-                              {tryOnEngine[outfit.outfit_id] === 'international' || tryOnEngine[outfit.outfit_id] === 'gemini' || tryOnSource[outfit.outfit_id]?.includes('gemini')
-                                ? '由国际旗舰多模态大模型 (Google Gemini / OpenAI) 智能合成 · 真实提取模特与衣橱每件单品实物图多图参考，智能外套内搭层叠与写实光影融合'
-                                : '由国内主流大模型 (阿里通义 / 字节豆包 / 腾讯混元) 智能合成 · 人物面容、发型发色、身体动作与背景 100% 原封不动冻结保留，仅换衣服'}
+                              {tryOnEngine[outfit.outfit_id] === 'seedream' || tryOnSource[outfit.outfit_id]?.includes('seedream') || tryOnSource[outfit.outfit_id]?.includes('doubao')
+                                ? '由字节跳动火山方舟即梦 Seedream 4.0 大模型生成 · 1:1 注入底图精准锁脸换装，电影级光影与细腻织物纹理'
+                                : '由阿里云通义万相智能局部重绘 · 人物面容、发型发色、身体动作与背景 100% 原貌定格冻结，仅换装推荐搭配'}
                             </p>
                           </div>
                         ) : tryOnLoading[outfit.outfit_id] ? (
@@ -1205,37 +1207,37 @@ export default function RecommendPage() {
                               <Sparkles className="h-6 w-6 animate-spin" />
                             </div>
                             <div className="text-base font-extrabold text-slate-900">
-                              {selectedEngine === 'international' || selectedEngine === 'gemini'
-                                ? '✨ 国际旗舰多模态正在进行多图视觉融合穿搭 (模特+各单品真实层叠)...'
-                                : '🌟 国内大模型正在进行局部重绘定格换装 (面容/发型/姿态/背景 100% 保持)...'}
+                              {selectedEngine === 'seedream'
+                                ? '✨ 字节即梦 Seedream 正在进行 1:1 锁脸商业时尚换装...'
+                                : '🌟 阿里通义万相正在进行局部重绘定格换装 (面容/发型/姿态 100% 保持)...'}
                             </div>
                             <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-                              {selectedEngine === 'international' || selectedEngine === 'gemini'
-                                ? '向国际旗舰多模态模型 (Gemini 等) 传入模特全身照与多件衣橱单品高清图，进行多模态视觉理解与真实层叠重构（预计 8~15 秒）'
-                                : '基于国内主流 AI 视觉大模型（通义/豆包/混元），智能提取服装遮罩，原图人脸、发型动作与背景 100% 冻结，仅把衣服换成推荐单品（预计 10~18 秒）'}
+                              {selectedEngine === 'seedream'
+                                ? '向字节即梦 Seedream 4.0 大模型注入出镜人像底图与高保真穿搭指令，保持面容发型体态精准锁脸换装（预计 8~15 秒）'
+                                : '基于阿里通义万相 AI 视觉大模型，智能提取服装遮罩，原图人脸、发型动作与背景 100% 冻结，仅把衣服换成推荐单品（预计 10~18 秒）'}
                             </p>
                           </div>
                         ) : (
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-purple-50/70 rounded-2xl p-4 border border-blue-100/80 shadow-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-emerald-50/70 rounded-2xl p-4 border border-purple-100/80 shadow-xs">
                             <div className="text-xs text-slate-800 flex items-center gap-2 font-medium">
-                              <Sparkles className="h-4 w-4 text-blue-600 shrink-0" />
+                              <Sparkles className="h-4 w-4 text-purple-600 shrink-0" />
                               <span>想看看这套穿搭的上身真实效果？选择引擎一键换装</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => handleGenerateTryOn(outfit, 'international')}
-                                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all active:scale-[0.98] cursor-pointer"
+                                onClick={() => handleGenerateTryOn(outfit, 'seedream')}
+                                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 transition-all active:scale-[0.98] cursor-pointer"
                               >
                                 <Sparkles className="h-3.5 w-3.5" />
-                                <span>✨ 国际旗舰融合 (Gemini · 推荐)</span>
+                                <span>✨ 字节即梦 Seedream (1:1真人锁脸换装)</span>
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleGenerateTryOn(outfit, 'domestic')}
-                                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                                onClick={() => handleGenerateTryOn(outfit, 'wanx')}
+                                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer"
                               >
-                                <span>🌟 国内大模型换装 (通义/豆包/混元)</span>
+                                <span>🌟 阿里通义万相 (100%原貌定格换装)</span>
                               </button>
                             </div>
                           </div>

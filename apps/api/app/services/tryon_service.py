@@ -1243,6 +1243,107 @@ def _clean_clothing_description(desc: str) -> str:
     return cleaned.strip()
 
 
+
+
+# -- Garments2Look Inspired: OOTD Collage Builder --------------------------
+# Inspired by Garments2Look (CVPR 2026): combine multiple garment flatlays
+# into one numbered OOTD reference image following layering order
+# (coat -> top -> bottom -> shoes), so the diffusion model clearly
+# understands garment stacking hierarchy, improving try-on fidelity.
+def _build_ootd_collage(
+    garment_entries: list,
+    outfit_id: str,
+    cell_size: int = 256,
+):
+    """
+    Build OOTD reference collage image from multiple garment flat-lays.
+
+    Args:
+        garment_entries: [(label: str, path: Path), ...] sorted by layering order
+        outfit_id: used for cache filename
+        cell_size: pixel size of each garment cell
+
+    Returns:
+        Local path to the collage image, or None on failure
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import hashlib
+
+        if not garment_entries:
+            return None
+
+        n = len(garment_entries)
+        cols = min(n, 3)
+        rows = (n + cols - 1) // cols
+        label_h = 32
+
+        canvas_w = cols * cell_size
+        canvas_h = rows * (cell_size + label_h)
+        canvas = Image.new("RGB", (canvas_w, canvas_h), color=(250, 250, 250))
+        draw = ImageDraw.Draw(canvas)
+
+        try:
+            font = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 16)
+            small_font = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 13)
+        except Exception:
+            font = ImageFont.load_default()
+            small_font = font
+
+        # Color per layer: coat/top/bottom/shoes/accessory
+        layer_colors = [
+            (70, 100, 180),
+            (80, 160, 120),
+            (160, 100, 60),
+            (120, 80, 160),
+            (180, 120, 50),
+        ]
+
+        for i, (label, img_path) in enumerate(garment_entries):
+            row = i // cols
+            col = i % cols
+            x_off = col * cell_size
+            y_off = row * (cell_size + label_h)
+
+            bg_color = layer_colors[i % len(layer_colors)]
+            draw.rectangle([x_off, y_off, x_off + cell_size, y_off + label_h], fill=bg_color)
+            # image index starts at 2 (image 1 is the person photo)
+            num_text = f"\u56fe{i + 2}  {label}"
+            draw.text((x_off + 6, y_off + 8), num_text, fill=(255, 255, 255), font=font)
+
+            try:
+                with Image.open(img_path) as gimg:
+                    gimg = gimg.convert("RGB")
+                    gimg.thumbnail((cell_size - 8, cell_size - 8), Image.Resampling.LANCZOS)
+                    paste_x = x_off + (cell_size - gimg.width) // 2
+                    paste_y = y_off + label_h + (cell_size - gimg.height) // 2
+                    canvas.paste(gimg, (paste_x, paste_y))
+            except Exception as img_err:
+                logger.warning(f"OOTD collage: cannot load {img_path}: {img_err}")
+                draw.rectangle(
+                    [x_off + 4, y_off + label_h + 4, x_off + cell_size - 4, y_off + label_h + cell_size - 4],
+                    fill=(220, 220, 220),
+                )
+
+            draw.rectangle(
+                [x_off, y_off, x_off + cell_size - 1, y_off + label_h + cell_size - 1],
+                outline=(200, 200, 200), width=1,
+            )
+
+        draw.text((canvas_w - 200, canvas_h - 20), "OOTD Ref - G2L Style", fill=(190, 190, 190), font=small_font)
+
+        collage_dir = Path("uploads") / "tryon" / "collages"
+        collage_dir.mkdir(parents=True, exist_ok=True)
+        id_hash = hashlib.md5(outfit_id.encode()).hexdigest()[:8]
+        collage_path = collage_dir / f"ootd_collage_{id_hash}.jpg"
+        canvas.save(str(collage_path), format="JPEG", quality=90)
+        logger.info(f"OOTD collage saved: {collage_path} ({n} items, {cols}x{rows})")
+        return collage_path
+
+    except Exception as e:
+        logger.warning(f"OOTD collage build failed: {e}")
+        return None
+
 def _get_item_fashion_desc(item: dict[str, Any]) -> str:
     """提取单品的丰富外观描述（支持直接描述、VLM描述与智能保底）。"""
     desc = item.get("description") or ""
@@ -1327,7 +1428,8 @@ def _build_seedream_fashion_prompt(
     }
     bg_desc = scene_map.get(scene, "纯白无缝商业摄影单色影棚，柔和纯净高调光，无杂物无干扰")
 
-    # 3. 搭配单品结构化层叠描述
+    # 3. 搭配单品结构化层叠描述（参考 Garments2Look layering order 标注规范）
+    # 按 coat(1) → top(2) → bottom(3) → shoes(4) → accessory(5) 排列，显式传达穿着层次给模型
     layer_order = {"coat": 1, "outerwear": 1, "top": 2, "bottom": 3, "shoes": 4, "accessory": 5}
     sorted_items = sorted(
         items,
@@ -1443,23 +1545,53 @@ async def generate_seedream_tryon(
     top_idx = None
     bottom_idx = None
 
-    if top_item and top_item.get("image_url"):
+    # -- Garments2Look Inspired: collect all garment paths for OOTD collage --
+    LAYER_LABELS = {
+        "coat": "外套/大衣", "outerwear": "外套",
+        "top": "上装", "bottom": "下装",
+        "shoes": "鞋履", "accessory": "配饰",
+    }
+    ootd_entries = []
+    for it in sorted_items:
+        cat = str(it.get("category", "")).lower()
+        img_url = it.get("image_url", "")
+        if not img_url:
+            continue
+        p = _resolve_existing_path(img_url)
+        if p and p.exists():
+            name = _get_item_fashion_desc(it) or LAYER_LABELS.get(cat, cat)
+            label = f"{LAYER_LABELS.get(cat, cat)}·{name[:8]}"
+            ootd_entries.append((label, p))
+
+    # Build OOTD collage (G2L style) and inject as first garment reference
+    ootd_collage_path = None
+    if ootd_entries:
+        ootd_collage_path = _build_ootd_collage(ootd_entries, outfit_id)
+        if ootd_collage_path:
+            collage_b64 = _compress_and_encode_image(ootd_collage_path, max_dim=768, quality=88)
+            if collage_b64:
+                images_payload.append(collage_b64)
+                top_idx = len(images_payload)
+                logger.info(f"Seedream OOTD collage injected as ref image{top_idx} ({len(ootd_entries)} items)")
+
+    # Also inject top garment individually for extra fidelity
+    if top_item and top_item.get("image_url") and len(images_payload) < 4:
         top_path = _resolve_existing_path(top_item["image_url"])
         if top_path and top_path.exists():
             top_b64 = _compress_and_encode_image(top_path, max_dim=768, quality=85)
             if top_b64:
                 images_payload.append(top_b64)
                 top_idx = len(images_payload)
-                logger.info(f"Seedream 注入上装平铺底图 (图{top_idx}): {top_path}")
+                logger.info(f"Seedream top garment extra ref (image{top_idx}): {top_path}")
 
-    if bottom_item and bottom_item.get("image_url") and len(images_payload) < 3:
+    if bottom_item and bottom_item.get("image_url") and len(images_payload) < 5:
         bottom_path = _resolve_existing_path(bottom_item["image_url"])
         if bottom_path and bottom_path.exists():
             bottom_b64 = _compress_and_encode_image(bottom_path, max_dim=768, quality=85)
             if bottom_b64:
                 images_payload.append(bottom_b64)
                 bottom_idx = len(images_payload)
-                logger.info(f"Seedream 注入下装平铺底图 (图{bottom_idx}): {bottom_path}")
+                logger.info(f"Seedream bottom garment extra ref (image{bottom_idx}): {bottom_path}")
 
     # 3. 构造提示词
     prompt = _build_seedream_fashion_prompt(

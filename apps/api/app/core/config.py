@@ -25,11 +25,21 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: list[str] = ["*"]
 
-    # --- AI Model ---
+    # --- AI Model & Multi-Provider Image Generation ---
     AI_API_KEY: str = ""
     AI_API_BASE_URL: str = "https://api.openai.com/v1"
     AI_VISION_MODEL: str = "gpt-4o"
     AI_CHAT_MODEL: str = "gpt-4o-mini"
+
+    # --- 国内主流 AI 视觉生图引擎配置 ---
+    TRYON_DEFAULT_ENGINE: str = "seedream"        # 默认生图引擎: seedream (字节即梦大片) | wanx (阿里通义万相)
+    VOLCENGINE_API_KEY: str = ""                  # 字节跳动火山方舟 API Key
+    VOLCENGINE_BASE_URL: str = "https://ark.cn-beijing.volces.com/api/v3" # 火山方舟 API 地址
+    VOLCENGINE_SEEDREAM_MODEL: str = "doubao-seedream-4-0-20260415" # 字节即梦模型版本
+
+    DOMESTIC_TRYON_PROVIDER: str = "wanx"        # 国内引擎提供商: wanx (阿里通义万相) | doubao (字节火山方舟) | hunyuan (腾讯混元)
+    DASHSCOPE_API_KEY: str = ""                  # 阿里百炼 API Key (留空时默认取 AI_API_KEY)
+    HUNYUAN_API_KEY: str = ""                    # 腾讯混元 API Key
 
     # --- Weather API ---
     WEATHER_API_KEY: str = ""

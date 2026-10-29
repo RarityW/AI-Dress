@@ -194,28 +194,46 @@ def generate_recommendation_reason(
     scene_score: float,
     color_score: float
 ) -> str:
-    """生成详实、具有解释性与说服力的穿搭推荐理由。"""
+    """
+    生成详实、具有解释性的穿搭推荐理由。
+    参考 Garments2Look 的 styling instructions 标注风格，增加：
+    - 层叠穿搭逻辑说明（layering order）
+    - 场景 styling 指引
+    - 搭配亮点高亮
+    """
     item_names = []
     item_colors = []
+    cats = []
     for it in items:
         sub = _get_val(it, "sub_category") or _get_val(it, "category") or "单品"
         col = _get_val(it, "primary_color", "")
+        cat = str(_get_val(it, "category", "")).lower()
         item_names.append(f"{col}{sub}" if col else str(sub))
         if col:
             item_colors.append(str(col))
+        cats.append(cat)
 
     names_str = "、".join(item_names)
     color_str = "搭配".join(list(dict.fromkeys(item_colors))[:3]) or "协调配色"
+    has_coat = "coat" in cats or "outerwear" in cats
+    has_shoes = "shoes" in cats
+    has_accessory = "accessory" in cats
 
     reasons = [f"精选组合（{names_str}）。"]
 
-    # 气温点评
+    # 气温适配点评
     if weather_score >= 0.85:
         reasons.append(f"当前气温约 {current_temp:.0f}℃，整体面料保暖与透气温区极度契合，体感舒适。")
     elif weather_score >= 0.7:
         reasons.append(f"适应约 {current_temp:.0f}℃ 的外界温度，温度适配良好。")
     else:
         reasons.append(f"在 {current_temp:.0f}℃ 环境下具备基础穿着适应度。")
+
+    # Garments2Look 启发：layering order 穿搭层叠逻辑说明
+    if has_coat and current_temp <= 20:
+        reasons.append("外套叠穿于上装之外，内外层次分明，保暖同时丰富廓形层次感。")
+    elif has_coat and current_temp > 20:
+        reasons.append("薄外套可随气温灵活脱搭，实用性强。")
 
     # 风格与场景点评
     scene_names = {
@@ -226,15 +244,37 @@ def generate_recommendation_reason(
         "casual": "休闲舒适", "formal": "干练正式", "sporty": "活力运动",
         "minimal": "质感极简", "vintage": "经典复古", "street": "潮流街头", "elegant": "优雅气质"
     }
+    # Garments2Look 启发：styling instructions 场景穿搭建议
+    scene_tips = {
+        "work": "上装可微微扎入腰部，提升干练比例感。",
+        "date": "外搭可半解开，展现随性松弛的约会氛围。",
+        "daily": "自然散穿，轻松展现日常舒适气质。",
+        "class": "背包与运动鞋可作为点睛配件，完成校园通勤风格。",
+        "sports": "建议选择轻薄透气面料单品，确保运动自由度。",
+        "party": "可搭配简约金属饰品作为配饰点缀，提升聚会仪式感。",
+        "interview": "领口与下摆线条整洁平服，展现专业正式形象。",
+    }
+
     s_label = style_names.get(target_style.lower(), target_style)
     sc_label = scene_names.get(target_scene.lower(), target_scene)
-
     reasons.append(f"整体展现【{s_label}】基调，恰当贴合【{sc_label}】氛围要求。")
+
+    tip = scene_tips.get(target_scene.lower(), "")
+    if tip:
+        reasons.append(tip)
 
     # 色彩点评
     if color_score >= 0.9:
         reasons.append(f"全身采用【{color_str}】的经典配色，视觉层次干净和谐。")
+    elif color_score >= 0.78:
+        reasons.append(f"【{color_str}】色系搭配和谐，有层次感。")
     else:
         reasons.append("整体色调搭配平衡耐看。")
+
+    # 单品完整度加分说明
+    if has_shoes and has_accessory:
+        reasons.append("鞋履与配饰一并纳入，整套穿搭完整度高。")
+    elif has_shoes:
+        reasons.append("含鞋履搭配，穿搭整体感更强。")
 
     return "".join(reasons)

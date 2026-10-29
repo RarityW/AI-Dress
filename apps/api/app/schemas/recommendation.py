@@ -26,6 +26,7 @@ class OutfitItemDetail(BaseModel):
     image_url: str
     temp_min: float
     temp_max: float
+    description: Optional[str] = Field(default=None, description="单品详细外观与印花描述")
 
 
 class ScoreBreakdown(BaseModel):

@@ -85,6 +85,7 @@ export interface OutfitItemDetail {
   image_url: string;
   temp_min: number;
   temp_max: number;
+  description?: string;
 }
 
 /** 评分维度明细 */
@@ -167,7 +168,7 @@ export interface TryOnRequest {
   gender?: string;
   scene?: string;
   target_style?: string;
-  engine?: 'inpaint' | 'qwen' | 'aitryon';
+  engine?: 'seedream' | 'wanx' | 'inpaint' | 'domestic' | 'international' | 'gemini' | 'qwen' | 'aitryon';
 }
 
 /** AI 虚拟试穿与生图结果 */

@@ -23,7 +23,6 @@ import {
   ArrowRight,
   Maximize2,
   X,
-  Zap,
   UploadCloud,
   Trash2,
 } from 'lucide-react';
@@ -172,7 +171,7 @@ export default function RecommendPage() {
   // 预设模特图与生图引擎状态
   const [presetModels, setPresetModels] = useState<PresetModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string>('female_1');
-  const [selectedEngine, setSelectedEngine] = useState<'inpaint' | 'qwen' | 'aitryon'>('inpaint');
+  const [selectedEngine, setSelectedEngine] = useState<'seedream' | 'wanx' | 'inpaint' | 'domestic'>('seedream');
   const [modelGenderFilter, setModelGenderFilter] = useState<'all' | 'female' | 'male'>('all');
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
@@ -297,9 +296,10 @@ export default function RecommendPage() {
   const [tryOnSource, setTryOnSource] = useState<Record<string, string>>({});
   const [tryOnEngine, setTryOnEngine] = useState<Record<string, string>>({});
 
-  const handleGenerateTryOn = async (outfit: OutfitRecommendation, engineOverride?: 'inpaint' | 'qwen' | 'aitryon') => {
+  const handleGenerateTryOn = async (outfit: OutfitRecommendation, engineOverride?: 'seedream' | 'wanx' | 'inpaint' | 'domestic') => {
     const outfitId = outfit.outfit_id;
     const engineToUse = engineOverride || selectedEngine;
+    setSelectedEngine(engineToUse);
     setTryOnLoading((prev) => ({ ...prev, [outfitId]: true }));
     setTryOnError((prev) => ({ ...prev, [outfitId]: '' }));
 
@@ -307,11 +307,13 @@ export default function RecommendPage() {
       const resp = await generateTryOn({
         outfit_id: outfitId,
         items: outfit.items.map((i) => ({
+          id: i.id,
           category: i.category,
           sub_category: i.sub_category,
           primary_color: i.primary_color,
           material: (i as any).material,
           image_url: i.image_url,
+          description: i.description,
         })),
         model_id: selectedModelId,
         scene,
@@ -632,98 +634,6 @@ export default function RecommendPage() {
               onChange={handleCustomModelFileChange}
               className="hidden"
             />
-
-            {/* 引擎切换器 */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-amber-500" />
-                  <span className="text-sm font-semibold text-gray-800">AI 视觉生成引擎</span>
-                </div>
-                <span className="text-xs text-purple-700 font-medium bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-100">
-                  {selectedEngine === 'inpaint'
-                    ? '🌟 原貌定格换装 (万相局部重绘 · 推荐)'
-                    : selectedEngine === 'qwen'
-                    ? '📸 通义万相 2.1 纯白影棚写真'
-                    : '👗 OutfitAnyone 1:1 像素试衣'}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  aria-pressed={selectedEngine === 'inpaint'}
-                  onClick={() => setSelectedEngine('inpaint')}
-                  className={`p-3.5 rounded-2xl border-2 text-left transition-colors cursor-pointer ${
-                    selectedEngine === 'inpaint'
-                      ? 'border-emerald-600 bg-emerald-50/50 shadow-sm ring-1 ring-emerald-300'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <span aria-hidden="true">🌟</span>
-                      <span>原貌定格换装 (推荐)</span>
-                    </span>
-                    <span className="text-[10px] font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 px-2 py-0.5 rounded-full">
-                      原貌100%保留
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-                    人物不变、动作姿势不变、背景不变、头型发型100%保留！通过智能服装遮罩，仅把身上的衣服样式替换为推荐方案。
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  aria-pressed={selectedEngine === 'qwen'}
-                  onClick={() => setSelectedEngine('qwen')}
-                  className={`p-3.5 rounded-2xl border-2 text-left transition-colors cursor-pointer ${
-                    selectedEngine === 'qwen'
-                      ? 'border-purple-600 bg-purple-50/50 shadow-sm ring-1 ring-purple-300'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <span aria-hidden="true">📸</span>
-                      <span>万相 2.1 纯白写真</span>
-                    </span>
-                    <span className="text-[10px] font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 px-2 py-0.5 rounded-full">
-                      空白背景 · 写真
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-                    全画幅纯白单色影棚背景，保持真实身材比例与发型发色，彻底杜绝任何多余饰品，生成时尚大片。
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  aria-pressed={selectedEngine === 'aitryon'}
-                  onClick={() => setSelectedEngine('aitryon')}
-                  className={`p-3.5 rounded-2xl border-2 text-left transition-colors cursor-pointer ${
-                    selectedEngine === 'aitryon'
-                      ? 'border-purple-600 bg-purple-50/50 shadow-sm ring-1 ring-purple-300'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <span aria-hidden="true">👗</span>
-                      <span>1:1 像素试衣</span>
-                    </span>
-                    <span className="text-[10px] font-medium text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                      OutfitAnyone
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
-                    将您衣橱中的真实单品像素级裁剪与纹理，精确贴合至选定模特或您自己的全身照身姿。
-                  </p>
-                </button>
-              </div>
-
-            </div>
 
             {/* 模特选择 */}
             <div className="space-y-2.5">
@@ -1202,22 +1112,15 @@ export default function RecommendPage() {
                                 <span className="text-sm font-bold text-gray-900">
                                   AI 穿搭上身效果
                                 </span>
-                                {(tryOnEngine[outfit.outfit_id] === 'inpaint' || tryOnSource[outfit.outfit_id]?.includes('imageedit')) && (
+                                {(tryOnEngine[outfit.outfit_id] === 'seedream' || tryOnSource[outfit.outfit_id]?.includes('seedream') || tryOnSource[outfit.outfit_id]?.includes('doubao')) ? (
+                                  <span className="text-[11px] font-bold text-purple-700 bg-gradient-to-r from-purple-100 to-indigo-100 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                    <span>✨</span>
+                                    <span>字节即梦 Seedream (1:1真人锁脸·画报级时尚换装)</span>
+                                  </span>
+                                ) : (
                                   <span className="text-[11px] font-bold text-emerald-700 bg-gradient-to-r from-emerald-100 to-teal-100 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
                                     <span>🌟</span>
-                                    <span>原貌定格换装 (面容/发型/姿势/背景100%保留)</span>
-                                  </span>
-                                )}
-                                {(tryOnEngine[outfit.outfit_id] === 'qwen' || tryOnSource[outfit.outfit_id]?.includes('t2i') || tryOnSource[outfit.outfit_id] === 'qwen-image-plus') && (
-                                  <span className="text-[11px] font-bold text-purple-700 bg-gradient-to-r from-purple-100 to-indigo-100 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
-                                    <span>📸</span>
-                                    <span>通义万相 2.1 纯白写真 (空白背景 · 原貌锁定)</span>
-                                  </span>
-                                )}
-                                {(tryOnEngine[outfit.outfit_id] === 'aitryon' || tryOnSource[outfit.outfit_id] === 'aitryon-plus' || tryOnSource[outfit.outfit_id] === 'aitryon') && (
-                                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
-                                    <span>👗</span>
-                                    <span>OutfitAnyone 1:1 试衣</span>
+                                    <span>阿里通义万相 (原貌定格局部换装)</span>
                                   </span>
                                 )}
                                 {tryOnSource[outfit.outfit_id] === 'cache' && (
@@ -1246,26 +1149,26 @@ export default function RecommendPage() {
                                   <Download className="h-3 w-3" />
                                   下载
                                 </a>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={() => handleGenerateTryOn(outfit, 'inpaint')}
+                                    onClick={() => handleGenerateTryOn(outfit, 'seedream')}
                                     disabled={tryOnLoading[outfit.outfit_id]}
-                                    title="原貌定格换装（面容、发型、动作、背景100%保留）"
-                                    className="text-xs text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                                    title="字节跳动火山方舟即梦 Seedream 4.0 旗舰时尚穿搭画报大片（1:1锁脸换装）"
+                                    className="text-xs text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
                                   >
-                                    <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
-                                    <span>原貌定格</span>
+                                    <Sparkles className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
+                                    <span>即梦 Seedream</span>
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleGenerateTryOn(outfit, 'qwen')}
+                                    onClick={() => handleGenerateTryOn(outfit, 'wanx')}
                                     disabled={tryOnLoading[outfit.outfit_id]}
-                                    title="使用阿里通义万相 2.1 重新生成纯白影棚写真"
-                                    className="text-xs text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg font-medium inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                                    title="阿里通义万相原貌定格局部重绘换装（面容、发型、身姿动作与背景 100% 保持）"
+                                    className="text-xs text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
                                   >
                                     <RefreshCw className={`h-3 w-3 ${tryOnLoading[outfit.outfit_id] ? 'animate-spin' : ''}`} />
-                                    <span>纯白写真</span>
+                                    <span>通义局部重绘</span>
                                   </button>
                                 </div>
                               </div>
@@ -1293,54 +1196,48 @@ export default function RecommendPage() {
                               </p>
                             )}
                             <p className="text-center text-xs text-gray-500 leading-relaxed font-medium">
-                              {tryOnEngine[outfit.outfit_id] === 'inpaint' || tryOnSource[outfit.outfit_id]?.includes('imageedit')
-                                ? '由阿里通义万相 2.1 局部重绘智能合成 · 人物面容、发型发色、身体动作与背景 100% 原封不动保留，仅换衣服'
-                                : tryOnEngine[outfit.outfit_id] === 'qwen' || tryOnSource[outfit.outfit_id]?.includes('wanx')
-                                ? '由阿里通义万相 2.1 旗舰大模型智能合成 · 纯白影棚背景，严格保持真实身材与发型，无任何多余配饰'
-                                : '由阿里云百炼 OutfitAnyone Plus 试衣模型智能合成 · 1:1 真实衣物像素贴合'}
+                              {tryOnEngine[outfit.outfit_id] === 'seedream' || tryOnSource[outfit.outfit_id]?.includes('seedream') || tryOnSource[outfit.outfit_id]?.includes('doubao')
+                                ? '由字节跳动火山方舟即梦 Seedream 4.0 大模型生成 · 1:1 注入底图精准锁脸换装，电影级光影与细腻织物纹理'
+                                : '由阿里云通义万相智能局部重绘 · 人物面容、发型发色、身体动作与背景 100% 原貌定格冻结，仅换装推荐搭配'}
                             </p>
                           </div>
                         ) : tryOnLoading[outfit.outfit_id] ? (
                           <div className="bg-gradient-to-br from-purple-50/80 via-indigo-50/50 to-white rounded-2xl p-8 border border-purple-200/80 text-center space-y-3.5 shadow-sm">
-                            <div className="inline-flex p-3.5 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-indigo-600 text-white shadow-md shadow-emerald-500/20 animate-pulse">
+                            <div className="inline-flex p-3.5 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 text-white shadow-md shadow-blue-500/20 animate-pulse">
                               <Sparkles className="h-6 w-6 animate-spin" />
                             </div>
                             <div className="text-base font-extrabold text-slate-900">
-                              {selectedEngine === 'inpaint'
-                                ? '🌟 通义万相 2.1 正在进行局部重绘定格换装 (面容/发型/姿态/背景 100% 保持)...'
-                                : selectedEngine === 'qwen'
-                                ? '📸 通义万相 2.1 正在生成纯白影棚写真 (锁定发型与身材)...'
-                                : '👗 OutfitAnyone 正在进行 1:1 像素贴合试穿...'}
+                              {selectedEngine === 'seedream'
+                                ? '✨ 字节即梦 Seedream 正在进行 1:1 锁脸商业时尚换装...'
+                                : '🌟 阿里通义万相正在进行局部重绘定格换装 (面容/发型/姿态 100% 保持)...'}
                             </div>
                             <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-                              {selectedEngine === 'inpaint'
-                                ? '智能提取服装遮罩，原图人脸、发型动作与背景 100% 冻结，仅把衣服换成推荐单品（预计 10~18 秒）'
-                                : selectedEngine === 'qwen'
-                                ? '严格采用纯白无缝影棚背景，保持原图发型发色与真实身材比例，杜绝多余配饰（预计 6~12 秒）'
-                                : '正在将您衣橱中的真实单品像素级迁移贴合至模特身姿（预计 10~20 秒）'}
+                              {selectedEngine === 'seedream'
+                                ? '向字节即梦 Seedream 4.0 大模型注入出镜人像底图与高保真穿搭指令，保持面容发型体态精准锁脸换装（预计 8~15 秒）'
+                                : '基于阿里通义万相 AI 视觉大模型，智能提取服装遮罩，原图人脸、发型动作与背景 100% 冻结，仅把衣服换成推荐单品（预计 10~18 秒）'}
                             </p>
                           </div>
                         ) : (
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-emerald-50/70 via-indigo-50/50 to-purple-50/70 rounded-2xl p-4 border border-emerald-100/80 shadow-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-purple-50/70 via-indigo-50/50 to-emerald-50/70 rounded-2xl p-4 border border-purple-100/80 shadow-xs">
                             <div className="text-xs text-slate-800 flex items-center gap-2 font-medium">
-                              <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
-                              <span>想看看这套穿搭的上身真实效果？点击一键定格换装</span>
+                              <Sparkles className="h-4 w-4 text-purple-600 shrink-0" />
+                              <span>想看看这套穿搭的上身真实效果？选择引擎一键换装</span>
                             </div>
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => handleGenerateTryOn(outfit, 'inpaint')}
-                                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-500/20 transition-all active:scale-[0.98] cursor-pointer"
+                                onClick={() => handleGenerateTryOn(outfit, 'seedream')}
+                                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 transition-all active:scale-[0.98] cursor-pointer"
                               >
                                 <Sparkles className="h-3.5 w-3.5" />
-                                <span>原貌定格换装 (推荐)</span>
+                                <span>✨ 字节即梦 Seedream (1:1真人锁脸换装)</span>
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleGenerateTryOn(outfit, 'qwen')}
-                                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+                                onClick={() => handleGenerateTryOn(outfit, 'wanx')}
+                                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer"
                               >
-                                <span>纯白写真</span>
+                                <span>🌟 阿里通义万相 (100%原貌定格换装)</span>
                               </button>
                             </div>
                           </div>

@@ -62,9 +62,35 @@ _OSS_CACHE: dict[str, str] = {}
 
 
 # ── 用户自定义模特管理 ──────────────────────────────────────────────────────
+def _resolve_existing_path(path_str: str) -> Optional[Path]:
+    """多基准目录路径解析，兼容从项目根目录与 apps/api 目录运行。"""
+    if not path_str:
+        return None
+    p = Path(path_str)
+    if p.exists():
+        return p
+    clean = path_str.replace("\\", "/").lstrip("/")
+    candidate_roots = [
+        Path("."),
+        Path("apps/api"),
+        Path(__file__).resolve().parent.parent.parent,
+        Path(__file__).resolve().parent.parent.parent.parent,
+    ]
+    for r in candidate_roots:
+        cand = r / clean
+        if cand.exists():
+            return cand
+    return None
+
+
 def get_user_custom_model_dir(user_id: str) -> Path:
-    """获取用户自定义模特存储目录。"""
+    """获取用户自定义模特存储目录（多路径自动探测）。"""
     user_str = str(user_id).strip() or "default_user"
+    for cand_root in [Path("apps/api/uploads/user_models"), Path("uploads/user_models")]:
+        d = cand_root / user_str
+        if d.exists():
+            return d
+    # 若均未创建，优先在当前工作目录的 uploads/user_models 下创建
     p = Path("uploads") / "user_models" / user_str
     p.mkdir(parents=True, exist_ok=True)
     return p
@@ -80,12 +106,16 @@ def get_user_custom_model(user_id: Optional[str]) -> Optional[dict[str, Any]]:
         try:
             with open(meta_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            local_p = Path(data.get("local_file", ""))
-            if not local_p.exists():
-                alt_p = Path("apps/api") / data.get("local_file", "")
-                if alt_p.exists():
-                    local_p = alt_p
-            if local_p.exists():
+            local_p = _resolve_existing_path(data.get("local_file", ""))
+            if not local_p:
+                # 尝试在 user_dir 查找
+                for f_name in ["custom_model_white.png", "custom_model.jpg", "custom_model.png"]:
+                    cand = user_dir / f_name
+                    if cand.exists():
+                        local_p = cand
+                        break
+            if local_p and local_p.exists():
+                data["local_file"] = str(local_p).replace("\\", "/")
                 return data
         except Exception as e:
             logger.warning(f"读取用户自定义模特配置失败: {e}")
@@ -243,7 +273,7 @@ async def generate_clean_background_model(
                 "X-DashScope-Async": "enable",
             }
 
-            async with httpx.AsyncClient(timeout=35.0) as client:
+            async with httpx.AsyncClient(timeout=35.0, trust_env=False) as client:
                 submit_resp = await client.post(
                     DASHSCOPE_SYNTHESIS_URL,
                     headers=headers,
@@ -458,7 +488,7 @@ async def upload_file_to_dashscope_oss(
         return None
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
             # 1. 获取临时上传策略
             policy_resp = await client.get(
                 DASHSCOPE_UPLOADS_URL,
@@ -670,7 +700,7 @@ async def generate_qwen_fashion_lookbook(
     # 优先使用 wanx2.1-t2i-plus，如遇限流备用 wanx2.1-t2i-turbo
     candidate_models = ["wanx2.1-t2i-plus", "wanx2.1-t2i-turbo"]
 
-    async with httpx.AsyncClient(timeout=35.0) as client:
+    async with httpx.AsyncClient(timeout=35.0, trust_env=False) as client:
         last_err = ""
         for model_name in candidate_models:
             payload = {
@@ -745,8 +775,9 @@ async def generate_qwen_fashion_lookbook(
                         }
 
             except Exception as e:
-                logger.error(f"{model_name} 生图异常: {e}")
-                last_err = str(e)
+                err_detail = _format_exception_msg(e, service_name="通义万相")
+                logger.error(f"{model_name} 生图异常: {err_detail}")
+                last_err = err_detail
 
         return _error_result(outfit_id, model_id, f"AI 生图生成暂时失败: {last_err[:120]}")
 
@@ -819,15 +850,7 @@ async def generate_virtual_tryon(
             bottom_garment_url = await _resolve_image_to_dashscope_url(img, api_key, category=cat)
 
     if not top_garment_url and not bottom_garment_url:
-        logger.info("搭配中无单品平铺图，自动切换至万相旗舰生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        return _error_result(outfit_id, model_id, "搭配中缺少可供 1:1 像素试穿的衣物平铺图")
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -854,39 +877,20 @@ async def generate_virtual_tryon(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=45.0, trust_env=False) as client:
             submit_resp = await client.post(
                 DASHSCOPE_SYNTHESIS_URL,
                 headers=headers,
                 json=payload,
             )
 
-            # 若 aitryon 接口调用受限（如未开通 aitryon-plus 权限），无缝平滑回退至万相生图
             if submit_resp.status_code != 200:
-                logger.warning(
-                    f"aitryon-plus 试穿提交未成功 (HTTP {submit_resp.status_code}): {submit_resp.text}，"
-                    "已无缝平滑回退至通义万相旗舰生图..."
-                )
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                logger.warning(f"aitryon-plus 试穿提交未成功 (HTTP {submit_resp.status_code}): {submit_resp.text}")
+                return _error_result(outfit_id, model_id, f"1:1 像素试穿提交失败: HTTP {submit_resp.status_code}")
 
             task_id = submit_resp.json().get("output", {}).get("task_id")
             if not task_id:
-                logger.warning("未能获取 aitryon task_id，自动回退至万相生图...")
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                return _error_result(outfit_id, model_id, "未能获取试穿任务 ID，请重试")
 
             logger.info(f"aitryon-plus 试衣任务已提交: task_id={task_id}")
 
@@ -898,7 +902,7 @@ async def generate_virtual_tryon(
                 poll_resp = await client.get(
                     f"{DASHSCOPE_TASK_URL}/{task_id}",
                     headers=poll_headers,
-                    timeout=10.0
+                    timeout=15.0
                 )
                 if poll_resp.status_code != 200:
                     continue
@@ -911,15 +915,8 @@ async def generate_virtual_tryon(
                     break
                 elif task_status in ("FAILED", "CANCELED"):
                     err_msg = poll_data.get("output", {}).get("message", "生成任务失败")
-                    logger.warning(f"aitryon-plus 任务失败: {err_msg}，回退至万相生图...")
-                    return await generate_qwen_fashion_lookbook(
-                        outfit_id=outfit_id,
-                        items=items,
-                        model_id=model_id,
-                        scene=scene,
-                        target_style=target_style,
-                        user_id=user_id,
-                    )
+                    logger.warning(f"aitryon-plus 任务失败: {err_msg}")
+                    return _error_result(outfit_id, model_id, f"1:1 像素试穿失败: {err_msg}")
 
             if generated_img_url:
                 dl_resp = await client.get(generated_img_url, timeout=30.0)
@@ -933,19 +930,36 @@ async def generate_virtual_tryon(
                         "source": "aitryon-plus",
                         "engine": "aitryon",
                     }
+                else:
+                    return _error_result(outfit_id, model_id, f"下载试穿结果图失败 HTTP {dl_resp.status_code}")
+            else:
+                return _error_result(outfit_id, model_id, "1:1 像素试穿超时，请稍后重试")
 
     except Exception as e:
-        logger.warning(f"虚拟试穿执行异常: {e}，自动回退至万相生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        err_detail = _format_exception_msg(e, service_name="阿里百炼")
+        logger.warning(f"虚拟试穿执行异常: {err_detail}")
+        return _error_result(outfit_id, model_id, f"虚拟试穿执行异常: {err_detail}")
 
     return _error_result(outfit_id, model_id, "试穿生成超时，请稍后重试")
+
+
+def _format_exception_msg(e: Any, service_name: str = "AI 生图服务") -> str:
+    """提取清晰易懂的异常说明。"""
+    err_str = str(e).strip()
+    cause_str = str(getattr(e, "__cause__", "")).strip() if getattr(e, "__cause__", None) else ""
+    full_detail = f"{err_str} {cause_str}".strip() or repr(e)
+    network_keywords = [
+        "SSL", "ConnectError", "EOF occurred", "EndOfStream",
+        "RemoteProtocolError", "ConnectionReset", "RemoteDisconnected",
+        "ConnectTimeout", "ReadTimeout"
+    ]
+    if any(k in full_detail or k in str(type(e)) for k in network_keywords):
+        return f"网络连接被切断 (无法连接国内 {service_name}。若开启了 Clash/VPN 全局代理，请在代理客户端中切换为【规则模式】或关闭全局代理以便直连国内服务器)"
+    if "401" in full_detail or "InvalidApiKey" in full_detail:
+        return f"{service_name} API Key 无效或未授权，请检查 .env 配置"
+    if "429" in full_detail or "Throttling" in full_detail or "Rate limit" in full_detail:
+        return f"{service_name} API 调用受限或超出频率/配额限制 (429)"
+    return full_detail[:120]
 
 
 def _error_result(outfit_id: str, model_id: str, error: str) -> dict[str, Any]:
@@ -1051,15 +1065,8 @@ async def generate_inpaint_tryon(
             local_p = alt_p
 
     if not local_p.exists():
-        logger.warning(f"模特底图不存在: {local_p}，回退至纯白写真生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        logger.warning(f"模特底图不存在: {local_p}")
+        return _error_result(outfit_id, model_id, f"未找到出镜模特底图文件: {local_p}")
 
     # 2. 检查缓存
     cache_dir = Path("uploads") / "tryon"
@@ -1083,15 +1090,8 @@ async def generate_inpaint_tryon(
     loop = asyncio.get_running_loop()
     mask_path = await loop.run_in_executor(None, get_or_create_clothing_mask, local_p)
     if not mask_path.exists():
-        logger.warning("未能生成服装遮罩，回退至纯白写真生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        logger.warning("未能生成服装遮罩")
+        return _error_result(outfit_id, model_id, "未能提取模特服装遮罩，请检查模特图片")
 
     # 4. 构建重绘提示词
     color_zh_map = {
@@ -1147,37 +1147,19 @@ async def generate_inpaint_tryon(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=45.0, trust_env=False) as client:
             submit_resp = await client.post(
                 DASHSCOPE_SYNTHESIS_URL,
                 headers=headers,
                 json=payload,
             )
             if submit_resp.status_code != 200:
-                logger.warning(
-                    f"wanx2.1-imageedit 提交失败 (HTTP {submit_resp.status_code}): {submit_resp.text}，"
-                    "自动回退至纯白写真生图..."
-                )
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                logger.warning(f"wanx2.1-imageedit 提交失败 (HTTP {submit_resp.status_code}): {submit_resp.text}")
+                return _error_result(outfit_id, model_id, f"国内大模型局部重绘提交失败: HTTP {submit_resp.status_code} - {submit_resp.text[:120]}")
 
             task_id = submit_resp.json().get("output", {}).get("task_id")
             if not task_id:
-                logger.warning("未能获取 imageedit task_id，回退至纯白写真生图...")
-                return await generate_qwen_fashion_lookbook(
-                    outfit_id=outfit_id,
-                    items=items,
-                    model_id=model_id,
-                    scene=scene,
-                    target_style=target_style,
-                    user_id=user_id,
-                )
+                return _error_result(outfit_id, model_id, "国内大模型未能返回有效任务 ID，请重试")
 
             logger.info(f"wanx2.1-imageedit 局部重绘定格换装任务已提交: task_id={task_id}")
             poll_headers = {"Authorization": f"Bearer {api_key}"}
@@ -1188,7 +1170,7 @@ async def generate_inpaint_tryon(
                 poll_resp = await client.get(
                     f"{DASHSCOPE_TASK_URL}/{task_id}",
                     headers=poll_headers,
-                    timeout=10.0,
+                    timeout=15.0,
                 )
                 if poll_resp.status_code != 200:
                     continue
@@ -1201,15 +1183,9 @@ async def generate_inpaint_tryon(
                         generated_img_url = results[0].get("url")
                     break
                 elif task_status in ("FAILED", "CANCELED"):
-                    logger.warning("wanx2.1-imageedit 任务失败，回退至纯白写真生图...")
-                    return await generate_qwen_fashion_lookbook(
-                        outfit_id=outfit_id,
-                        items=items,
-                        model_id=model_id,
-                        scene=scene,
-                        target_style=target_style,
-                        user_id=user_id,
-                    )
+                    msg = poll_data.get("output", {}).get("message", "任务执行失败")
+                    logger.warning(f"wanx2.1-imageedit 任务失败: {msg}")
+                    return _error_result(outfit_id, model_id, f"国内大模型重绘失败: {msg}")
 
             if generated_img_url:
                 dl_resp = await client.get(generated_img_url, timeout=30.0)
@@ -1224,22 +1200,526 @@ async def generate_inpaint_tryon(
                         "engine": "inpaint",
                         "prompt": inpaint_prompt,
                     }
+                else:
+                    return _error_result(outfit_id, model_id, f"下载国内模型生成的图片失败 HTTP {dl_resp.status_code}")
+            else:
+                return _error_result(outfit_id, model_id, "国内模型生图超时，未在时限内生成图片，请重试")
 
     except Exception as e:
-        logger.warning(f"局部重绘换衣执行异常: {e}，自动回退至万相生图...")
-        return await generate_qwen_fashion_lookbook(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
+        err_detail = _format_exception_msg(e)
+        logger.warning(f"局部重绘换衣执行异常: {err_detail}")
+        return _error_result(outfit_id, model_id, f"国内大模型局部重绘生图异常: {err_detail}")
 
     return _error_result(outfit_id, model_id, "换装生成超时，请稍后重试")
 
 
-# ── 综合统一调度接口 ────────────────────────────────────────────────────────
+# ── 引擎 4：字节跳动火山方舟即梦 Seedream 旗舰时尚穿搭画报 (doubao-seedream-4-0-20260415) ───
+def _compress_and_encode_image(file_path: Path, max_dim: int = 768, quality: int = 85) -> Optional[str]:
+    """将本地图片压缩至适中尺寸并编码为 Base64，兼顾高保真细节与极速网络传输。"""
+    try:
+        from PIL import Image
+        import io
+        import base64
+        with Image.open(file_path) as img:
+            rgb_img = img.convert("RGB")
+            w, h = rgb_img.size
+            if max(w, h) > max_dim:
+                scale = max_dim / max(w, h)
+                rgb_img = rgb_img.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            rgb_img.save(buf, format="JPEG", quality=quality)
+            return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception as e:
+        logger.warning(f"图片压缩编码失败: {file_path} - {e}")
+        return None
+
+
+def _clean_clothing_description(desc: str) -> str:
+    """去除平铺白底、棚拍等杂质描述词，提取纯净服装描述。"""
+    if not desc:
+        return ""
+    import re
+    cleaned = re.sub(r"[\(（][^\)）]*(?:底|平铺|展平|去杂|棚拍|纯白|展示)[^\)）]*[\)）]", "", desc)
+    return cleaned.strip()
+
+
+
+
+# -- Garments2Look Inspired: OOTD Collage Builder --------------------------
+# Inspired by Garments2Look (CVPR 2026): combine multiple garment flatlays
+# into one numbered OOTD reference image following layering order
+# (coat -> top -> bottom -> shoes), so the diffusion model clearly
+# understands garment stacking hierarchy, improving try-on fidelity.
+def _build_ootd_collage(
+    garment_entries: list,
+    outfit_id: str,
+    cell_size: int = 256,
+):
+    """
+    Build OOTD reference collage image from multiple garment flat-lays.
+
+    Args:
+        garment_entries: [(label: str, path: Path), ...] sorted by layering order
+        outfit_id: used for cache filename
+        cell_size: pixel size of each garment cell
+
+    Returns:
+        Local path to the collage image, or None on failure
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import hashlib
+
+        if not garment_entries:
+            return None
+
+        n = len(garment_entries)
+        cols = min(n, 3)
+        rows = (n + cols - 1) // cols
+        label_h = 32
+
+        canvas_w = cols * cell_size
+        canvas_h = rows * (cell_size + label_h)
+        canvas = Image.new("RGB", (canvas_w, canvas_h), color=(250, 250, 250))
+        draw = ImageDraw.Draw(canvas)
+
+        try:
+            font = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 16)
+            small_font = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 13)
+        except Exception:
+            font = ImageFont.load_default()
+            small_font = font
+
+        # Color per layer: coat/top/bottom/shoes/accessory
+        layer_colors = [
+            (70, 100, 180),
+            (80, 160, 120),
+            (160, 100, 60),
+            (120, 80, 160),
+            (180, 120, 50),
+        ]
+
+        for i, (label, img_path) in enumerate(garment_entries):
+            row = i // cols
+            col = i % cols
+            x_off = col * cell_size
+            y_off = row * (cell_size + label_h)
+
+            bg_color = layer_colors[i % len(layer_colors)]
+            draw.rectangle([x_off, y_off, x_off + cell_size, y_off + label_h], fill=bg_color)
+            # image index starts at 2 (image 1 is the person photo)
+            num_text = f"\u56fe{i + 2}  {label}"
+            draw.text((x_off + 6, y_off + 8), num_text, fill=(255, 255, 255), font=font)
+
+            try:
+                with Image.open(img_path) as gimg:
+                    gimg = gimg.convert("RGB")
+                    gimg.thumbnail((cell_size - 8, cell_size - 8), Image.Resampling.LANCZOS)
+                    paste_x = x_off + (cell_size - gimg.width) // 2
+                    paste_y = y_off + label_h + (cell_size - gimg.height) // 2
+                    canvas.paste(gimg, (paste_x, paste_y))
+            except Exception as img_err:
+                logger.warning(f"OOTD collage: cannot load {img_path}: {img_err}")
+                draw.rectangle(
+                    [x_off + 4, y_off + label_h + 4, x_off + cell_size - 4, y_off + label_h + cell_size - 4],
+                    fill=(220, 220, 220),
+                )
+
+            draw.rectangle(
+                [x_off, y_off, x_off + cell_size - 1, y_off + label_h + cell_size - 1],
+                outline=(200, 200, 200), width=1,
+            )
+
+        draw.text((canvas_w - 200, canvas_h - 20), "OOTD Ref - G2L Style", fill=(190, 190, 190), font=small_font)
+
+        collage_dir = Path("uploads") / "tryon" / "collages"
+        collage_dir.mkdir(parents=True, exist_ok=True)
+        id_hash = hashlib.md5(outfit_id.encode()).hexdigest()[:8]
+        collage_path = collage_dir / f"ootd_collage_{id_hash}.jpg"
+        canvas.save(str(collage_path), format="JPEG", quality=90)
+        logger.info(f"OOTD collage saved: {collage_path} ({n} items, {cols}x{rows})")
+        return collage_path
+
+    except Exception as e:
+        logger.warning(f"OOTD collage build failed: {e}")
+        return None
+
+def _get_item_fashion_desc(item: dict[str, Any]) -> str:
+    """提取单品的丰富外观描述（支持直接描述、VLM描述与智能保底）。"""
+    desc = item.get("description") or ""
+    if desc:
+        cleaned = _clean_clothing_description(desc)
+        if cleaned:
+            return cleaned
+
+    color_zh_map = {
+        "white": "白色", "black": "深黑色", "blue": "深蓝色", "navy": "藏青色",
+        "gray": "经典灰色", "grey": "经典灰色", "beige": "米色", "khaki": "卡其色",
+        "brown": "棕色", "red": "红色", "green": "墨绿色", "yellow": "黄色",
+        "pink": "淡粉色", "purple": "紫色", "orange": "橘色", "denim": "水洗牛仔蓝"
+    }
+
+    color = item.get("primary_color", "") or item.get("color", "")
+    color_zh = color_zh_map.get(str(color).lower(), color)
+    subcat = item.get("sub_category") or item.get("name") or item.get("category", "")
+    mat = item.get("material", "")
+    pattern = item.get("pattern", "")
+
+    tokens = [t for t in [color_zh, pattern, mat, subcat] if t and t != "none"]
+    return "".join(tokens) or subcat or "时尚单品"
+
+
+def _build_seedream_fashion_prompt(
+    items: list[dict[str, Any]],
+    model_id: str = "female_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+    user_id: Optional[str] = None,
+    top_img_idx: Optional[int] = None,
+    bottom_img_idx: Optional[int] = None,
+    top_item: Optional[dict[str, Any]] = None,
+    bottom_item: Optional[dict[str, Any]] = None,
+) -> str:
+    """
+    为字节跳动即梦/豆包 Seedream 生图模型构建专业商业级多图参考时尚穿搭提示词。
+    锁定出镜人物面容五官、发型与眼镜，彻底替换去除原有旧衣服图案/LOGO，1:1 精准上身推荐单品。
+    """
+    model_cfg = _get_model_config(model_id, user_id=user_id)
+    gender = model_cfg.get("gender", "female")
+
+    # 1. 模特人像与身份严格锁定约束
+    if model_id == "custom":
+        hairstyle = model_cfg.get("hairstyle") or "保持原图自然清爽发型与自然发色"
+        if top_img_idx:
+            identity_desc = (
+                f"专业商业人像服装换装摄影。图1为出镜人物。严格保持图1人物的真实面容五官、发型发色、眼镜、神态、身材体态与骨骼比例特征100%一致，"
+                f"{hairstyle}，严禁更改人物长相、严禁摘除或更改眼镜、严禁修改发型发色与体型体态。\n"
+                f"【核心换装要求】：必须彻底脱掉并替换图1人物身上原本穿着的原有旧衣服，严禁残留原图衣服上的任何旧LOGO、旧印花、旧字母或原有任何图案！"
+            )
+        else:
+            identity_desc = (
+                f"专业商业人像服装换装摄影。严格保持参考图片中人物的真实面容五官、发型发色、眼镜、神态、身材体态与骨骼比例特征100%一致，"
+                f"{hairstyle}，严禁更改人物长相、严禁摘除或更改眼镜、严禁修改发型发色与脸型。\n"
+                f"【核心换装要求】：必须彻底脱掉并替换参考图片中人物原本穿着的原有旧衣服，严禁残留原图衣服上的任何旧LOGO、旧印花或原有任何图案！"
+            )
+    else:
+        if gender == "female":
+            model_desc = "优雅知性的东亚年轻女性时尚模特，五官清秀精致，真实细腻皮肤质感，黑色齐肩微卷发，体态纤细匀称"
+        else:
+            model_desc = "阳光俊朗的东亚年轻男性时尚模特，清爽利落黑色短发，轮廓分明干净的面容，真实细腻皮肤质感，修长匀称体态"
+        
+        if top_img_idx:
+            identity_desc = (
+                f"专业商业人像服装模特摄影。图1为出镜模特。严格保持图1中{model_desc}的真实面容五官、发型与身形体态特征一致。\n"
+                f"【核心换装要求】：必须彻底脱掉并替换图1模特原本穿着的旧衣服，严禁残留原有任何旧LOGO或图案。"
+            )
+        else:
+            identity_desc = (
+                f"专业商业人像服装模特摄影。严格保持参考图片中{model_desc}的真实面容五官、发型与身形体态特征一致。\n"
+                f"【核心换装要求】：必须彻底替换参考图片中的原有衣服，换上指定新搭配。"
+            )
+
+    # 2. 场景与影棚环境
+    scene_map = {
+        "daily": "纯白色高端极简无缝室内影棚，柔和纯净高调光，背景纯净无杂物",
+        "work": "都市高端商务极简影棚背景，柔和侧逆光，高级冷淡色调，干净纯粹",
+        "dating": "温馨明亮的高级现代室内，柔和温暖自然漫反射光，松弛典雅",
+        "sports": "开阔极简运动空间浅色背景，明亮通透清爽光线，充满活力",
+    }
+    bg_desc = scene_map.get(scene, "纯白无缝商业摄影单色影棚，柔和纯净高调光，无杂物无干扰")
+
+    # 3. 搭配单品结构化层叠描述（参考 Garments2Look layering order 标注规范）
+    # 按 coat(1) → top(2) → bottom(3) → shoes(4) → accessory(5) 排列，显式传达穿着层次给模型
+    layer_order = {"coat": 1, "outerwear": 1, "top": 2, "bottom": 3, "shoes": 4, "accessory": 5}
+    sorted_items = sorted(
+        items,
+        key=lambda x: layer_order.get(str(x.get("category", "")).lower(), 99)
+    )
+
+    outfit_descs = []
+    for it in sorted_items:
+        desc = _get_item_fashion_desc(it)
+        if desc:
+            outfit_descs.append(desc)
+    full_outfit_str = "、".join(outfit_descs) if outfit_descs else "一套剪裁合身时尚的高级服装"
+
+    if top_img_idx and top_item:
+        top_name = _get_item_fashion_desc(top_item)
+        garment_inst = (
+            f"为人物换上图{top_img_idx}中的服装：{top_name}。必须精准1:1还原图{top_img_idx}单品的版型剪裁、面料色彩以及衣物上的图案印花文字细节。"
+        )
+        if bottom_img_idx and bottom_item:
+            bottom_name = _get_item_fashion_desc(bottom_item)
+            garment_inst += (
+                f"下身换上图{bottom_img_idx}中的{bottom_name}，精准还原图{bottom_img_idx}的版型与色彩材质。"
+            )
+    else:
+        garment_inst = f"为人物换上一套全新高级穿搭组合：整齐协调地穿着{full_outfit_str}。"
+
+    # 4. 服装质感与层叠逻辑约束
+    garment_craft = (
+        "服装剪裁利落合身，完美贴合身材体态，外搭与内搭自然交叠显露层次，腰身比例自然，"
+        "衣服面料纹理细腻逼真，自然柔和的垂坠褶皱与走线质感，领口与袖口细节自然平服"
+    )
+
+    # 5. 摄影参数
+    photography_spec = (
+        "顶级国际时尚杂志商业 Lookbook，哈苏相机 85mm 人像定焦拍摄，全身构图，全景立姿全身照，"
+        "顶级商业布光，轮廓光分明，面容立体清晰，8K 超高清分辨率，电影级光影质感，极度逼真写实，大师级调色"
+    )
+    restriction_str = "画面干净整洁，严禁多余的背包、帽子、墨镜或手提包配件，严禁修改人物五官眼镜与体态"
+
+    prompt = (
+        f"{identity_desc}\n"
+        f"{garment_inst}\n"
+        f"全套穿搭清单：{full_outfit_str}。\n"
+        f"{garment_craft}。{bg_desc}。{photography_spec}。{restriction_str}。"
+    )
+    return prompt
+
+
+async def generate_seedream_tryon(
+    outfit_id: str,
+    items: list[dict[str, Any]],
+    model_id: str = "female_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    基于字节跳动火山方舟即梦 Seedream (doubao-seedream-4-0-20260415) 的多图参考商业穿搭换装生图。
+    支持同时传入人物底图 (图1) 与衣物平铺底图 (图2上装/图3下装)，彻底去除旧衣物印花图案，1:1 精准换装。
+    """
+    save_dir = Path("uploads") / "tryon"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    cache_suffix = f"{outfit_id}_{model_id}"
+    if model_id == "custom" and user_id:
+        cache_suffix += f"_{user_id[:8]}"
+    local_filename = f"{cache_suffix}_seedream_v3.png"
+    local_filepath = save_dir / local_filename
+    local_url = f"/uploads/tryon/{local_filename}"
+
+    model_name = getattr(settings, "VOLCENGINE_SEEDREAM_MODEL", "doubao-seedream-4-0-20260415")
+
+    if local_filepath.exists() and local_filepath.stat().st_size > 5000:
+        logger.info(f"命中 Seedream 试穿缓存: {local_url}")
+        return {
+            "outfit_id": outfit_id,
+            "image_url": local_url,
+            "model_id": model_id,
+            "source": model_name,
+            "engine": "seedream",
+            "prompt": "Seedream Fashion Lookbook",
+        }
+
+    api_key = getattr(settings, "VOLCENGINE_API_KEY", "") or os.environ.get("VOLCENGINE_API_KEY", "")
+    if not api_key:
+        return _error_result(outfit_id, model_id, "未配置 VOLCENGINE_API_KEY，请在 .env 中填入火山方舟 API Key")
+
+    # 1. 准备多图参考：图1 (模特底图)
+    images_payload: list[str] = []
+    model_cfg = _get_model_config(model_id, user_id=user_id)
+    local_model_path = _resolve_existing_path(model_cfg.get("local_file", ""))
+    if local_model_path and local_model_path.exists():
+        person_b64 = _compress_and_encode_image(local_model_path, max_dim=768, quality=88)
+        if person_b64:
+            images_payload.append(person_b64)
+            logger.info(f"Seedream 注入模特底图 (图1): {local_model_path}")
+
+    # 2. 准备多图参考：图2 (上装/外套平铺底图), 图3 (下装平铺底图)
+    layer_order = {"coat": 1, "outerwear": 1, "top": 2, "bottom": 3, "shoes": 4}
+    sorted_items = sorted(
+        items,
+        key=lambda x: layer_order.get(str(x.get("category", "")).lower(), 99)
+    )
+
+    top_item = None
+    bottom_item = None
+    for it in sorted_items:
+        cat = str(it.get("category", "")).lower()
+        if cat in ("coat", "outerwear", "top") and not top_item:
+            top_item = it
+        elif cat == "bottom" and not bottom_item:
+            bottom_item = it
+
+    top_idx = None
+    bottom_idx = None
+
+    # -- Garments2Look Inspired: collect all garment paths for OOTD collage --
+    LAYER_LABELS = {
+        "coat": "外套/大衣", "outerwear": "外套",
+        "top": "上装", "bottom": "下装",
+        "shoes": "鞋履", "accessory": "配饰",
+    }
+    ootd_entries = []
+    for it in sorted_items:
+        cat = str(it.get("category", "")).lower()
+        img_url = it.get("image_url", "")
+        if not img_url:
+            continue
+        p = _resolve_existing_path(img_url)
+        if p and p.exists():
+            name = _get_item_fashion_desc(it) or LAYER_LABELS.get(cat, cat)
+            label = f"{LAYER_LABELS.get(cat, cat)}·{name[:8]}"
+            ootd_entries.append((label, p))
+
+    # Build OOTD collage (G2L style) and inject as first garment reference
+    ootd_collage_path = None
+    if ootd_entries:
+        ootd_collage_path = _build_ootd_collage(ootd_entries, outfit_id)
+        if ootd_collage_path:
+            collage_b64 = _compress_and_encode_image(ootd_collage_path, max_dim=768, quality=88)
+            if collage_b64:
+                images_payload.append(collage_b64)
+                top_idx = len(images_payload)
+                logger.info(f"Seedream OOTD collage injected as ref image{top_idx} ({len(ootd_entries)} items)")
+
+    # Also inject top garment individually for extra fidelity
+    if top_item and top_item.get("image_url") and len(images_payload) < 4:
+        top_path = _resolve_existing_path(top_item["image_url"])
+        if top_path and top_path.exists():
+            top_b64 = _compress_and_encode_image(top_path, max_dim=768, quality=85)
+            if top_b64:
+                images_payload.append(top_b64)
+                top_idx = len(images_payload)
+                logger.info(f"Seedream top garment extra ref (image{top_idx}): {top_path}")
+
+    if bottom_item and bottom_item.get("image_url") and len(images_payload) < 5:
+        bottom_path = _resolve_existing_path(bottom_item["image_url"])
+        if bottom_path and bottom_path.exists():
+            bottom_b64 = _compress_and_encode_image(bottom_path, max_dim=768, quality=85)
+            if bottom_b64:
+                images_payload.append(bottom_b64)
+                bottom_idx = len(images_payload)
+                logger.info(f"Seedream bottom garment extra ref (image{bottom_idx}): {bottom_path}")
+
+    # 3. 构造提示词
+    prompt = _build_seedream_fashion_prompt(
+        items=items,
+        model_id=model_id,
+        scene=scene,
+        target_style=target_style,
+        user_id=user_id,
+        top_img_idx=top_idx,
+        bottom_img_idx=bottom_idx,
+        top_item=top_item,
+        bottom_item=bottom_item,
+    )
+    logger.info(f"Seedream 多图增强 Prompt: {prompt}")
+
+    base_url = getattr(settings, "VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3").rstrip("/")
+    url = f"{base_url}/images/generations"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "prompt": prompt,
+        "response_format": "url",
+        "size": "1024x1024",
+    }
+    if images_payload:
+        payload["image"] = images_payload if len(images_payload) > 1 else images_payload[0]
+
+    try:
+        # 国内直连 (trust_env=False 彻底杜绝本地 VPN/Clash 误拦截国内方舟 API，超时放宽至 90s)
+        async with httpx.AsyncClient(timeout=90.0, trust_env=False) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                logger.error(f"Seedream API 调用失败 HTTP {resp.status_code}: {resp.text}")
+                try:
+                    err_json = resp.json().get("error", {})
+                    err_code = err_json.get("code", "")
+                    msg = err_json.get("message", "") or resp.text[:120]
+                except Exception:
+                    err_code = ""
+                    msg = resp.text[:120]
+
+                if err_code == "ModelNotOpen":
+                    return _error_result(
+                        outfit_id,
+                        model_id,
+                        f"模型未开通 (ModelNotOpen)：您的账号尚未开通 {model_name}。请前往【火山方舟控制台 -> 开通管理】一键开通，或在【在线推理】中创建接入点后将 ep-xxxx 填入配置。"
+                    )
+                if "NotFound" in err_code:
+                    return _error_result(
+                        outfit_id,
+                        model_id,
+                        f"模型/接入点不存在 (404)：火山方舟未找到 {model_name}。请前往【火山方舟控制台 -> 在线推理】查看并复制您的 ep-xxxx 接入点 ID。"
+                    )
+                return _error_result(outfit_id, model_id, f"Seedream API 错误 (HTTP {resp.status_code}): {msg}")
+
+            data = resp.json()
+            images_data = data.get("data", [])
+            img_url = ""
+            if images_data and isinstance(images_data, list):
+                img_url = images_data[0].get("url") or ""
+
+            if img_url:
+                for _retry in range(3):
+                    try:
+                        dl_resp = await client.get(img_url, timeout=30.0)
+                        if dl_resp.status_code == 200:
+                            local_filepath.write_bytes(dl_resp.content)
+                            # 双向同步至 apps/api/uploads/tryon
+                            alt_p = Path("apps/api/uploads/tryon") / local_filename
+                            if alt_p != local_filepath:
+                                try:
+                                    alt_p.parent.mkdir(parents=True, exist_ok=True)
+                                    alt_p.write_bytes(dl_resp.content)
+                                except Exception:
+                                    pass
+                            logger.info(f"Seedream 多图参考时尚大片已保存至: {local_url}")
+                            return {
+                                "outfit_id": outfit_id,
+                                "image_url": local_url,
+                                "model_id": model_id,
+                                "source": model_name,
+                                "engine": "seedream",
+                                "prompt": prompt[:120] + "...",
+                            }
+                    except Exception as dl_err:
+                        logger.warning(f"下载 Seedream 生成图重试 ({_retry+1}/3): {dl_err}")
+                        await asyncio.sleep(1.0)
+
+            return _error_result(outfit_id, model_id, "Seedream 未能返回有效图片链接或下载超时")
+
+    except Exception as e:
+        err_msg = _format_exception_msg(e, service_name="字节即梦 (Seedream)")
+        logger.error(f"Seedream 试穿生图异常: {err_msg}")
+        return _error_result(outfit_id, model_id, f"Seedream 试穿生成失败: {err_msg}")
+
+
+# ── 综合统一调度接口（国内主流双引擎架构） ─────────────────────────
+async def generate_domestic_ai_tryon(
+    outfit_id: str,
+    items: list[dict[str, Any]],
+    model_id: str = "female_1",
+    scene: str = "daily",
+    target_style: str = "casual",
+    user_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    国内主流 AI 局部重绘定格换装（默认采用阿里通义万相原貌换装）。
+    执行局部重绘换装（面容、发型、姿态与背景 100% 保持，仅换推荐衣物）。
+    """
+    provider = getattr(settings, "DOMESTIC_TRYON_PROVIDER", "wanx").lower()
+    logger.info(f"调用国内大模型局部重绘引擎 (provider={provider})...")
+    res = await generate_inpaint_tryon(
+        outfit_id=outfit_id,
+        items=items,
+        model_id=model_id,
+        scene=scene,
+        target_style=target_style,
+        user_id=user_id,
+    )
+    if "error" not in res.get("source", ""):
+        res["engine"] = "wanx"
+    return res
+
+
 async def generate_tryon_image(
     outfit_id: str,
     items: list[dict[str, Any]],
@@ -1247,30 +1727,19 @@ async def generate_tryon_image(
     scene: str = "daily",
     target_style: str = "casual",
     model_id: str = "female_1",
-    engine: str = "inpaint",
+    engine: str = "seedream",
     user_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    生图/试衣统一入口。
-    - engine="inpaint": 通义万相 2.1 局部重绘定格换装（默认推荐，人物动作姿态、背景、头型发型100%保留）
-    - engine="qwen": 阿里通义万相 2.1 旗舰纯白影棚写真（高颜值、纯白空白影棚大片）
-    - engine="aitryon": 阿里百炼 OutfitAnyone Plus 1:1 像素级虚拟试穿（支持自动无缝降级）
-    - model_id="custom": 用户专属个人形象
+    生图/试衣统一入口（精简为国内两大主流引擎）：
+    1. engine in ('seedream', 'doubao', 'volcengine'): 字节跳动火山方舟即梦 Seedream 旗舰时尚穿搭大片
+    2. engine in ('wanx', 'inpaint', 'domestic') 或其他: 阿里通义万相原貌局部重绘定格换装
     """
     if gender == "male" and model_id == "female_1":
         model_id = "male_1"
 
-    if model_id == "custom" or engine == "inpaint":
-        result = await generate_inpaint_tryon(
-            outfit_id=outfit_id,
-            items=items,
-            model_id=model_id,
-            scene=scene,
-            target_style=target_style,
-            user_id=user_id,
-        )
-    elif engine == "aitryon":
-        result = await generate_virtual_tryon(
+    if engine in ("seedream", "doubao", "volcengine"):
+        result = await generate_seedream_tryon(
             outfit_id=outfit_id,
             items=items,
             model_id=model_id,
@@ -1279,7 +1748,7 @@ async def generate_tryon_image(
             user_id=user_id,
         )
     else:
-        result = await generate_qwen_fashion_lookbook(
+        result = await generate_domestic_ai_tryon(
             outfit_id=outfit_id,
             items=items,
             model_id=model_id,

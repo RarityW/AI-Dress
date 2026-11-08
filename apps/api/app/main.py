@@ -32,18 +32,22 @@ async def lifespan(app: FastAPI):
 
     Base.metadata.create_all(bind=engine)
     
-    # 自动创建默认用户（暂无用户系统时使用）
+    # 自动创建默认用户（向后兼容，供 get_current_user_optional 降级使用）
     with SessionLocal() as db:
-        default_user = db.query(User).filter(User.username == "default_user").first()
+        from sqlalchemy import or_
+        default_user = db.query(User).filter(
+            or_(User.account == "default_user", User.username == "default_user")
+        ).first()
         if not default_user:
             default_user = User(
-                username="default_user",
+                account="default_user",
+                username="默认用户",
                 email="default@yijian.ai",
                 hashed_password="not-a-real-password",
             )
             db.add(default_user)
             db.commit()
-            
+        
     yield
 
 

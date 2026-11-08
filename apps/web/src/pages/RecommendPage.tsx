@@ -735,17 +735,18 @@ export default function RecommendPage() {
                           }`}
                         >
                           <img
+                            key={model.thumbnail}
                             src={model.thumbnail}
                             alt="我的专属形象"
                             className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
                           />
 
-                          {/* 正在生成纯白影棚背景时的遮罩层 */}
-                          {generatingCleanBg && (
+                          {/* 正在上传或生成纯白影棚背景时的遮罩层 */}
+                          {(uploadingCustomModel || generatingCleanBg) && (
                             <div className="absolute inset-0 bg-black/65 backdrop-blur-xs flex flex-col items-center justify-center text-center p-3 z-20 text-white">
                               <RefreshCw className="w-7 h-7 text-white animate-spin mb-2" />
-                              <p className="text-xs font-bold">万相 AI 正在纯化背景...</p>
-                              <p className="text-[10px] text-gray-300 mt-0.5">重绘纯白高级影棚底色</p>
+                              <p className="text-xs font-bold">{uploadingCustomModel ? '正在解析上传形象...' : '万相 AI 正在纯化背景...'}</p>
+                              <p className="text-[10px] text-gray-300 mt-0.5">{uploadingCustomModel ? '提取发型与体态特征' : '重绘纯白高级影棚底色'}</p>
                             </div>
                           )}
 
@@ -758,13 +759,14 @@ export default function RecommendPage() {
                               <button
                                 type="button"
                                 title="重新上传全身照"
+                                disabled={uploadingCustomModel || generatingCleanBg}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   customModelInputRef.current?.click();
                                 }}
-                                className="w-6 h-6 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-colors shadow"
+                                className="w-6 h-6 rounded-full bg-black/60 hover:bg-black/90 disabled:opacity-50 text-white flex items-center justify-center transition-colors shadow"
                               >
-                                <RefreshCw className="w-3 h-3" />
+                                <RefreshCw className={`w-3 h-3 ${uploadingCustomModel ? 'animate-spin' : ''}`} />
                               </button>
                               <button
                                 type="button"

@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -60,6 +61,29 @@ PRESET_MODELS = [
 # 内存级 OSS URL 缓存 (避免同张图片重复上传, key: local_path, val: oss://...)
 _OSS_CACHE: dict[str, str] = {}
 
+def _clear_user_custom_model_files(user_id: str):
+    """彻底清除用户个人模特目录下的所有旧图片与遮罩，清除 _OSS_CACHE，并清理历史试穿生图缓存"""
+    user_str = str(user_id).strip() or "default_user"
+    user_dir = get_user_custom_model_dir(user_str)
+    if user_dir.exists():
+        for f in list(user_dir.iterdir()):
+            if f.is_file() and f.name != "model_meta.json":
+                _OSS_CACHE.pop(str(f.resolve()), None)
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+
+    # 清理该用户在 uploads/tryon 目录下的旧试穿效果图缓存，避免换人后命中旧生图
+    for cand_root in [Path("apps/api/uploads/tryon"), Path("uploads/tryon")]:
+        if cand_root.exists():
+            user_prefix = user_str[:8]
+            for tryon_file in cand_root.glob(f"*_custom_{user_prefix}*"):
+                try:
+                    tryon_file.unlink()
+                except Exception:
+                    pass
+
 
 # ── 用户自定义模特管理 ──────────────────────────────────────────────────────
 def _resolve_existing_path(path_str: str) -> Optional[Path]:
@@ -69,7 +93,7 @@ def _resolve_existing_path(path_str: str) -> Optional[Path]:
     p = Path(path_str)
     if p.exists():
         return p
-    clean = path_str.replace("\\", "/").lstrip("/")
+    clean = path_str.replace(chr(92), "/").lstrip("/")
     candidate_roots = [
         Path("."),
         Path("apps/api"),
@@ -115,7 +139,7 @@ def get_user_custom_model(user_id: Optional[str]) -> Optional[dict[str, Any]]:
                         local_p = cand
                         break
             if local_p and local_p.exists():
-                data["local_file"] = str(local_p).replace("\\", "/")
+                data["local_file"] = str(local_p).replace(chr(92), "/")
                 return data
         except Exception as e:
             logger.warning(f"读取用户自定义模特配置失败: {e}")
@@ -131,28 +155,22 @@ def save_user_custom_model(
     hairstyle: str = "保持原图自然发型与发色",
     body_shape: str = "真实自然身材比例",
 ) -> dict[str, Any]:
-    """保存用户上传的全身照并写入元数据，锁定发型与真实身材。"""
+    """保存用户上传的全身照并写入元数据，锁定发型与真实身材。彻底清理历史缓存。"""
     user_dir = get_user_custom_model_dir(user_id)
-    # 清理历史可能存在的旧图片及旧遮罩
-    for old_file in user_dir.glob("custom_model.*"):
-        try:
-            old_file.unlink()
-        except Exception:
-            pass
-    old_mask = user_dir / "clothing_mask.png"
-    if old_mask.exists():
-        try:
-            old_mask.unlink()
-        except Exception:
-            pass
+    # 彻底清理旧图片、旧遮罩、旧OSS缓存及旧试穿结果
+    _clear_user_custom_model_files(user_id)
 
     clean_ext = file_ext if file_ext.startswith(".") else f".{file_ext}"
     img_name = f"custom_model{clean_ext}"
     local_path = user_dir / img_name
     local_path.write_bytes(image_bytes)
 
-    rel_local = str(local_path).replace("\\", "/")
+    # 移除该路径可能的旧 OSS 缓存
+    _OSS_CACHE.pop(str(local_path.resolve()), None)
+
+    rel_local = str(local_path).replace(chr(92), "/")
     web_url = f"/uploads/user_models/{user_id}/{img_name}"
+    now_ts = int(time.time())
 
     model_data = {
         "id": "custom",
@@ -160,12 +178,17 @@ def save_user_custom_model(
         "gender": gender,
         "thumbnail": web_url,
         "full_url": web_url,
+        "raw_url": web_url,
+        "local_raw_file": rel_local,
         "local_file": rel_local,
         "persona": persona or "真实自然东亚年轻人物，自然健康肤质与神态",
         "hairstyle": hairstyle or "保持原图自然发型与发色",
         "body_shape": body_shape or "真实自然身材比例",
         "is_custom": True,
         "has_uploaded": True,
+        "has_clean_white": False,
+        "active_display": "raw",
+        "updated_at": now_ts,
     }
 
     meta_file = user_dir / "model_meta.json"
@@ -175,8 +198,9 @@ def save_user_custom_model(
 
 
 def delete_user_custom_model(user_id: str) -> bool:
-    """删除用户的自定义模特。"""
+    """删除用户的自定义模特并清理关联试穿缓存。"""
     user_dir = get_user_custom_model_dir(user_id)
+    _clear_user_custom_model_files(user_id)
     if user_dir.exists():
         shutil.rmtree(user_dir, ignore_errors=True)
         return True
@@ -217,7 +241,7 @@ async def generate_clean_background_model(
     white_filename = "custom_model_white.png"
     white_local_path = user_dir / white_filename
     white_web_url = f"/uploads/user_models/{user_id}/{white_filename}"
-    rel_white_local = str(white_local_path).replace("\\", "/")
+    rel_white_local = str(white_local_path).replace(chr(92), "/")
 
     # 1. 尝试使用百炼万相 wanx2.1-imageedit 大模型进行专业影棚纯白背景重绘
     api_key = settings.AI_API_KEY
@@ -347,6 +371,7 @@ async def generate_clean_background_model(
     model_data["thumbnail"] = white_web_url
     model_data["full_url"] = white_web_url
     model_data["local_file"] = rel_white_local
+    model_data["updated_at"] = int(time.time())
 
     meta_file.write_text(json.dumps(model_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -373,37 +398,47 @@ def switch_user_model_display(user_id: str, mode: str = "white") -> dict[str, An
     raw_local = model_data.get("local_raw_file") or model_data.get("local_file", "")
     white_url = model_data.get("white_url", "")
     white_local = model_data.get("local_white_file", "")
+    now_ts = int(time.time())
 
     if mode == "white" and white_url:
-        p = Path(white_local)
-        if not p.exists():
-            alt = Path("apps/api") / white_local
-            if alt.exists():
-                p = alt
-        if p.exists():
+        p = _resolve_existing_path(white_local)
+        if p and p.exists():
             model_data["active_display"] = "white"
             model_data["thumbnail"] = white_url
             model_data["full_url"] = white_url
-            model_data["local_file"] = white_local
+            model_data["local_file"] = str(p).replace(chr(92), "/")
+            model_data["updated_at"] = now_ts
             meta_file.write_text(json.dumps(model_data, ensure_ascii=False, indent=2), encoding="utf-8")
             return model_data
 
     # 回退到原始图片
+    p = _resolve_existing_path(raw_local)
     model_data["active_display"] = "raw"
     model_data["thumbnail"] = raw_url
     model_data["full_url"] = raw_url
-    model_data["local_file"] = raw_local
+    if p and p.exists():
+        model_data["local_file"] = str(p).replace(chr(92), "/")
+    model_data["updated_at"] = now_ts
     meta_file.write_text(json.dumps(model_data, ensure_ascii=False, indent=2), encoding="utf-8")
     return model_data
 
 
+def _append_v(url: Optional[str], ver: Any) -> str:
+    """为静态图片 URL 添加基于修改时间戳的缓存破坏参数，杜绝浏览器图片强缓存。"""
+    if not url:
+        return ""
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}v={ver}"
+
+
 def get_preset_models(user_id: Optional[str] = None) -> list[dict[str, Any]]:
-    """返回模特图列表供前端选择：置顶自定义卡片 + 精简的 2 位核心专业男女模特。"""
+    """返回模特图列表供前端选择：置顶自定义卡片 + 精简的 2 位核心专业男女模特。包含自动防缓存版本号。"""
     result: list[dict[str, Any]] = []
 
     # 1. 尝试获取用户专属模特
     custom = get_user_custom_model(user_id) if user_id else None
     if custom:
+        ver = custom.get("updated_at") or int(time.time())
         active_thumb = custom.get("thumbnail", "")
         raw_thumb = custom.get("raw_url") or active_thumb
         white_thumb = custom.get("white_url", "")
@@ -411,16 +446,17 @@ def get_preset_models(user_id: Optional[str] = None) -> list[dict[str, Any]]:
             "id": "custom",
             "label": custom.get("label", "我的形象 (真人专属)"),
             "gender": custom.get("gender", "male"),
-            "thumbnail": active_thumb,
-            "full_url": active_thumb,
-            "raw_url": raw_thumb,
-            "white_url": white_thumb,
+            "thumbnail": _append_v(active_thumb, ver),
+            "full_url": _append_v(active_thumb, ver),
+            "raw_url": _append_v(raw_thumb, ver),
+            "white_url": _append_v(white_thumb, ver),
             "has_clean_white": custom.get("has_clean_white", False),
             "active_display": custom.get("active_display", "raw"),
             "hairstyle": custom.get("hairstyle", "保持原图自然发型与发色"),
             "body_shape": custom.get("body_shape", "真实自然身材比例"),
             "is_custom": True,
             "has_uploaded": True,
+            "updated_at": ver,
         })
     else:
         result.append({
@@ -438,7 +474,6 @@ def get_preset_models(user_id: Optional[str] = None) -> list[dict[str, Any]]:
             "is_custom": True,
             "has_uploaded": False,
         })
-
 
     # 2. 预设核心模特
     for m in PRESET_MODELS:
